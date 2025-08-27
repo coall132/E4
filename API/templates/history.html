@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h3>Historique de vos recommandations</h3>
+<div id="history-container" class="accordion">
+    <div class="text-center p-5">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    if (!getToken()) {
+        window.location.href = '/login';
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+        const container = document.getElementById('history-container');
+        try {
+            const response = await fetch('/predictions/me', {
+                headers: {'Authorization': `Bearer ${getToken()}`}
+            });
+            if (!response.ok) throw new Error('Could not fetch history.');
+
+            const predictions = await response.json();
+            
+            if (predictions.length === 0) {
+                 container.innerHTML = '<div class="alert alert-info">Vous n\'avez pas encore de prédictions.</div>';
+                 return;
+            }
+
+            container.innerHTML = ''; // Clear spinner
+            predictions.forEach((pred, index) => {
+                const date = new Date(pred.form.created_at).toLocaleString('fr-FR');
+                let itemsHtml = '';
+                pred.items_rich.forEach(item => {
+                    itemsHtml += `<li><b>${item.details.nom}</b> (Score: ${item.score.toFixed(2)})</li>`;
+                });
+
+                const accordionItem = `
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="heading-${index}">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${index}">
+                                Prédiction du ${date}
+                            </button>
+                        </h2>
+                        <div id="collapse-${index}" class="accordion-collapse collapse" data-bs-parent="#history-container">
+                            <div class="accordion-body">
+                                <strong>Restaurants recommandés :</strong>
+                                <ul>${itemsHtml}</ul>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', accordionItem);
+            });
+
+        } catch (err) {
+            container.innerHTML = `<div class="alert alert-danger">${err.message}</div>`;
+        }
+    });
+</script>
+{% endblock %}
