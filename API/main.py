@@ -76,16 +76,27 @@ api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
 BASE_DIR = Path(__file__).resolve().parent  
 STATIC_DIR = BASE_DIR / "static"                
 TEMPLATES_DIR = BASE_DIR / "templates" 
-PASSION_DIR = STATIC_DIR / "passion"
+PASSION_DIR = STATIC_DIR / "strategy"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-app.mount("/passion", StaticFiles(directory=str(PASSION_DIR)), name="passion")
+app.mount("/strategy", StaticFiles(directory=str(PASSION_DIR)), name="strategy")
 
 
 models.ensure_ml_schema(engine)
 models._attach_external_tables(engine)
 models.Base.metadata.create_all(bind=engine)
 
+@app.middleware("http")
+async def check_auth_cookie(request: Request, call_next):
+    # Protège uniquement les pages commençant par /app/
+    if request.url.path.startswith("/app/"):
+        token = request.cookies.get("auth_token")
+        if not token:
+            # Si pas de token, on redirige vers la page de connexion
+            return RedirectResponse(url="/login")
+    
+    response = await call_next(request)
+    return response
 
 @app.on_event("startup")
 def warmup():
@@ -160,6 +171,18 @@ def warmup():
     anch_shape = None if anchors is None else getattr(anchors, "shape", None)
     print(f"[startup] OK | rows={len(df)} | features={len(feature_cols)} | anchors={anch_shape} |")
 
+async def get_optional_current_user(request: Request, db: Session = Depends(get_db)):
+    token = request.cookies.get("auth_token")
+    if not token:
+        return None
+    try:
+        subject = await CRUD.get_current_subject(token)
+        user_id = CRUD.current_user_id(subject)
+        user = db.query(models.User).filter(models.User.id == user_id).first()
+        return user
+    except HTTPException:
+        return None
+    
 @app.get("/")
 def read_root():
     return {"message": "Bienvenue sur l'API des restaurants. Allez sur /docs pour voir les endpoints."}
@@ -310,30 +333,25 @@ def submit_feedback(payload: schema.FeedbackIn,sub: str = Depends(CRUD.get_curre
 @app.post("/auth/web/token", response_model=schema.TokenOut, tags=["Auth"])
 def login_for_web_access_token(db: Session = Depends(get_db), form_data: OAuth2PasswordRequestForm = Depends()):
     user = CRUD.get_user_by_username(db, username=form_data.username)
-    
     if not user or not user.hashed_password or not CRUD.ph.verify(user.hashed_password, form_data.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Nom d'utilisateur ou mot de passe incorrect",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
     token, exp_ts = CRUD.create_access_token(subject=f"user:{user.id}")
     return schema.TokenOut(access_token=token, expires_at=exp_ts)
 
 
-# AJOUT : Route pour créer un utilisateur depuis le site web
 @app.post("/users", response_model=schema.UserOut, tags=["Auth"])
 def register_user(user: schema.UserCreate, db: Session = Depends(get_db)):
-    # ... (code de la proposition précédente, il est déjà correct)
-    db_user_by_username = CRUD.get_user_by_username(db, username=user.username)
-    if db_user_by_username:
+    if CRUD.get_user_by_username(db, username=user.username):
         raise HTTPException(status_code=409, detail="Ce nom d'utilisateur est déjà pris.")
-    
-    db_user_by_email = CRUD.get_user_by_email(db, email=user.email)
-    if db_user_by_email:
+    if CRUD.get_user_by_email(db, email=user.email) and not CRUD.get_user_by_email(db, email=user.email).hashed_password:
+         # Cas où l'email existe déjà (créé via API) mais sans mot de passe
+         pass
+    elif CRUD.get_user_by_email(db, email=user.email):
         raise HTTPException(status_code=409, detail="Cet email est déjà utilisé.")
-        
     return CRUD.create_user(db=db, user=user)
 
 @app.get("/predictions/me", tags=["predict"])
@@ -359,35 +377,26 @@ def get_user_predictions(
         
     return results
 
-@app.middleware("http")
-async def check_auth_cookie(request: Request, call_next):
-    if request.url.path.startswith("/app/"):
-        token = request.cookies.get("auth_token")
-        if not token:
-            return RedirectResponse(url="/login")
-    
-    response = await call_next(request)
-    return response
 
-# Redirection de la racine
-@app.get("/")
-def read_root():
-    return RedirectResponse(url="/app/predict")
+@app.get("/", include_in_schema=False)
+def root(user: models.User = Depends(get_optional_current_user)):
+    if user:
+        return RedirectResponse(url="/app/predict")
+    return RedirectResponse(url="/login")
 
-# Pages d'authentification
-@app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
+@app.get("/app/predict", response_class=HTMLResponse, tags=["Site Web"])
+async def predict_page(request: Request, user: models.User = Depends(get_optional_current_user)):
+    return templates.TemplateResponse("predict.html", {"request": request, "current_user": user})
 
-@app.get("/register", response_class=HTMLResponse)
-async def register_page(request: Request):
-    return templates.TemplateResponse("register.html", {"request": request})
+@app.get("/app/history", response_class=HTMLResponse, tags=["Site Web"])
+async def history_page(request: Request, user: models.User = Depends(get_optional_current_user)):
+    return templates.TemplateResponse("history.html", {"request": request, "current_user": user})
 
-# Pages de l'application (protégées par le middleware)
-@app.get("/app/predict", response_class=HTMLResponse)
-async def predict_page(request: Request):
-    return templates.TemplateResponse("predict.html", {"request": request})
+# MODIFICATION: Les pages de login/register doivent passer `current_user` à `base.html`
+@app.get("/login", response_class=HTMLResponse, tags=["Site Web"])
+async def login_page(request: Request, user: models.User = Depends(get_optional_current_user)):
+    return templates.TemplateResponse("login.html", {"request": request, "current_user": user})
 
-@app.get("/app/history", response_class=HTMLResponse)
-async def history_page(request: Request):
-    return templates.TemplateResponse("history.html", {"request": request})
+@app.get("/register", response_class=HTMLResponse, tags=["Site Web"])
+async def register_page(request: Request, user: models.User = Depends(get_optional_current_user)):
+    return templates.TemplateResponse("register.html", {"request": request, "current_user": user})

@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h3>Historique de vos recommandations</h3>
+<div class="container section-title" data-aos="fade-up">
+    <h2>Votre Historique de Recommandations</h2>
+    <p>Retrouvez ici toutes vos recherches précédentes et les restaurants que nous vous avons suggérés.</p>
+</div>
+
 <div id="history-container" class="accordion">
     <div class="text-center p-5">
         <div class="spinner-border" role="status">
@@ -23,34 +27,44 @@
             const response = await fetch('/predictions/me', {
                 headers: {'Authorization': `Bearer ${getToken()}`}
             });
-            if (!response.ok) throw new Error('Could not fetch history.');
+            if (!response.ok) throw new Error('Impossible de charger l\'historique.');
 
             const predictions = await response.json();
             
             if (predictions.length === 0) {
-                 container.innerHTML = '<div class="alert alert-info">Vous n\'avez pas encore de prédictions.</div>';
+                 container.innerHTML = '<div class="alert alert-secondary border-0">Vous n\'avez pas encore de prédictions.</div>';
                  return;
             }
 
-            container.innerHTML = ''; // Clear spinner
+            container.innerHTML = ''; // Vider le spinner
             predictions.forEach((pred, index) => {
                 const date = new Date(pred.form.created_at).toLocaleString('fr-FR');
+                
+                // Construire le résumé de la recherche
+                let criteria = [];
+                if(pred.form.description) criteria.push(`"${pred.form.description}"`);
+                if(pred.form.city) criteria.push(`📍 ${pred.form.city}`);
+                if(pred.form.price_level) criteria.push(`💰 ${'€'.repeat(pred.form.price_level)}`);
+                const criteriaHtml = criteria.length > 0 ? `<strong>Critères :</strong> ${criteria.join(' • ')}` : 'Aucun critère spécifique.';
+
+                // Construire la liste des résultats
                 let itemsHtml = '';
                 pred.items_rich.forEach(item => {
-                    itemsHtml += `<li><b>${item.details.nom}</b> (Score: ${item.score.toFixed(2)})</li>`;
+                    itemsHtml += `<li class="list-group-item bg-transparent border-secondary">${item.details.nom} <span class="badge bg-primary float-end">Score: ${item.score.toFixed(2)}</span></li>`;
                 });
 
                 const accordionItem = `
                     <div class="accordion-item">
                         <h2 class="accordion-header" id="heading-${index}">
                             <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${index}">
-                                Prédiction du ${date}
+                                Recherche du ${date}
                             </button>
                         </h2>
                         <div id="collapse-${index}" class="accordion-collapse collapse" data-bs-parent="#history-container">
                             <div class="accordion-body">
-                                <strong>Restaurants recommandés :</strong>
-                                <ul>${itemsHtml}</ul>
+                                <p>${criteriaHtml}</p>
+                                <h6>Restaurants suggérés :</h6>
+                                <ul class="list-group list-group-flush">${itemsHtml}</ul>
                             </div>
                         </div>
                     </div>

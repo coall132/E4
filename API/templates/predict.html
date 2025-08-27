@@ -1,171 +1,39 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="row">
-    <div class="col-lg-4">
-        <h3>Votre recherche</h3>
-        <div class="card">
-            <div class="card-body">
-                <form id="predict-form">
-                    <div class="mb-3">
-                        <label for="price_level" class="form-label">Niveau de prix (1-4)</label>
-                        <input type="number" class="form-control" id="price_level" min="1" max="4">
-                    </div>
-                    <div class="mb-3">
-                        <label for="city" class="form-label">Code Postal</label>
-                        <input type="text" class="form-control" id="city" placeholder="Ex: 37000">
-                    </div>
-                    <div class="mb-3">
-                        <label for="description" class="form-label">Description (envies, type de cuisine...)</label>
-                        <textarea class="form-control" id="description" rows="3"></textarea>
-                    </div>
-                    <div class="d-grid">
-                         <button type="submit" class="btn btn-primary" id="predict-btn">Lancer la recherche</button>
-                    </div>
-                </form>
-            </div>
-        </div>
+<section id="prediction" class="prediction">
+  <div class="container">
+
+    <div class="section-title" data-aos="fade-up">
+      <h2>Lancer une Recommandation</h2>
+      <p>Bonjour {{ current_user.username }} ! Dites-nous ce que vous cherchez, notre IA s'occupe du reste.</p>
     </div>
 
-    <div class="col-lg-8">
-        <h3>Résultats</h3>
-        <div id="results-container" class="vstack gap-3">
-             <div class="alert alert-info">Les résultats de votre recherche apparaîtront ici.</div>
+    <div class="row" data-aos="fade-up" data-aos-delay="100">
+      <div class="col-lg-4">
+        <div class="card p-3">
+            <h5 class="mb-3"><i class="bi bi-ui-checks-grid"></i> Vos Critères</h5>
+            <form id="predict-form">
+                </form>
+        </div>
+      </div>
+
+      <div class="col-lg-8">
+        <div id="results-container" class="row gy-4">
+          <div class="col-12">
+            <div class="alert alert-secondary border-0">Les résultats de votre recherche apparaîtront ici.</div>
+          </div>
         </div>
         
         <div id="feedback-section" class="mt-4 d-none">
-            <h4>Donnez votre avis sur cette recommandation</h4>
-            <div class="card">
-                <div class="card-body">
-                    <form id="feedback-form">
-                        <input type="hidden" id="prediction_id">
-                        <div class="mb-3">
-                            <label for="rating" class="form-label">Note (0 à 5)</label>
-                            <input type="range" class="form-range" min="0" max="5" id="rating">
-                        </div>
-                        <div class="mb-3">
-                            <label for="comment" class="form-label">Commentaire (optionnel)</label>
-                            <textarea class="form-control" id="comment" rows="2"></textarea>
-                        </div>
-                        <button type="submit" class="btn btn-success">Envoyer le feedback</button>
-                    </form>
-                     <div id="feedback-success" class="alert alert-success mt-3 d-none">Merci pour votre retour !</div>
-                </div>
-            </div>
-        </div>
+             </div>
+      </div>
     </div>
-</div>
+
+  </div>
+</section>
 {% endblock %}
+
 
 {% block scripts %}
-<script>
-    // --- Redirection si non connecté ---
-    if (!getToken()) {
-        window.location.href = '/login';
-    }
-
-    const predictForm = document.getElementById('predict-form');
-    const resultsContainer = document.getElementById('results-container');
-    const predictBtn = document.getElementById('predict-btn');
-    const feedbackSection = document.getElementById('feedback-section');
-    const feedbackForm = document.getElementById('feedback-form');
-
-    // --- Gestion de la prédiction ---
-    predictForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        
-        const payload = {
-            price_level: parseInt(document.getElementById('price_level').value) || null,
-            city: document.getElementById('city').value || null,
-            description: document.getElementById('description').value || null,
-            options: [], // À implémenter si vous ajoutez des checkboxes pour les options
-            open: null   // À implémenter si vous ajoutez un sélecteur de créneau
-        };
-        
-        predictBtn.disabled = true;
-        predictBtn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Recherche...`;
-        resultsContainer.innerHTML = '';
-        feedbackSection.classList.add('d-none');
-
-        try {
-            const response = await fetch('/predict?k=5', { // On demande 5 résultats
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${getToken()}`
-                },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.detail || "Erreur lors de la prédiction.");
-            }
-            const data = await response.json();
-            displayResults(data);
-
-        } catch (err) {
-            resultsContainer.innerHTML = `<div class="alert alert-danger">${err.message}</div>`;
-        } finally {
-            predictBtn.disabled = false;
-            predictBtn.innerHTML = 'Lancer la recherche';
-        }
-    });
-
-    function displayResults(data) {
-        if (!data.items_rich || data.items_rich.length === 0) {
-            resultsContainer.innerHTML = `<div class="alert alert-warning">Aucun restaurant ne correspond à votre recherche.</div>`;
-            return;
-        }
-
-        data.items_rich.forEach(item => {
-            const details = item.details || {};
-            const cardHtml = `
-                <div class="card">
-                    <div class="card-body">
-                        <h5 class="card-title">${details.nom || 'Nom indisponible'}</h5>
-                        <h6 class="card-subtitle mb-2 text-muted">${details.adresse || ''}</h6>
-                        <p class="card-text">${(details.description || '').substring(0, 150)}...</p>
-                        <span class="badge bg-primary me-2">Note: ${details.rating || 'N/A'} / 5</span>
-                        <span class="badge bg-secondary">Prix: ${details.priceLevel_symbole || 'N/A'}</span>
-                    </div>
-                </div>
-            `;
-            resultsContainer.insertAdjacentHTML('beforeend', cardHtml);
-        });
-
-        // Afficher le formulaire de feedback
-        document.getElementById('prediction_id').value = data.prediction_id;
-        feedbackSection.classList.remove('d-none');
-        document.getElementById('feedback-success').classList.add('d-none');
-    }
-
-    // --- Gestion du Feedback ---
-    feedbackForm.addEventListener('submit', async(e) => {
-        e.preventDefault();
-        const payload = {
-            prediction_id: document.getElementById('prediction_id').value,
-            rating: parseInt(document.getElementById('rating').value),
-            comment: document.getElementById('comment').value
-        };
-
-        try {
-            const response = await fetch('/feedback', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${getToken()}`
-                },
-                body: JSON.stringify(payload)
-            });
-            if (!response.ok) throw new Error("Impossible d'envoyer le feedback.");
-
-            document.getElementById('feedback-success').classList.remove('d-none');
-            feedbackForm.reset();
-        } catch(err) {
-            alert(err.message);
-        }
-    });
-
-</script>
-{% endblock %}
+    {% endblock %}

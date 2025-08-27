@@ -1,35 +1,31 @@
-{% extends "base.html" %}
+{% extends "base_auth.html" %}
+
+{% block title %}Créer un compte - RecoResto{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-6 col-lg-5">
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <h2 class="card-title text-center mb-4">Créer un compte</h2>
-                <div id="error-alert" class="alert alert-danger d-none" role="alert"></div>
-                <div id="success-alert" class="alert alert-success d-none" role="alert"></div>
-                <form id="register-form">
-                    <div class="mb-3">
-                        <label for="username" class="form-label">Nom d'utilisateur</label>
-                        <input type="text" class="form-control" id="username" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="email" class="form-label">Email</label>
-                        <input type="email" class="form-control" id="email" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="password" class="form-label">Mot de passe</label>
-                        <input type="password" class="form-control" id="password" required>
-                    </div>
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary">S'inscrire</button>
-                    </div>
-                </form>
-                <p class="mt-3 text-center">Déjà un compte ? <a href="/login">Connectez-vous</a></p>
-            </div>
-        </div>
+<h3 class="card-title text-center mb-4">Créer un compte</h3>
+<div id="error-alert" class="alert alert-danger d-none" role="alert"></div>
+<div id="success-alert" class="alert alert-success d-none" role="alert"></div>
+
+<form id="register-form" novalidate>
+    <div class="form-floating mb-3">
+        <input type="text" class="form-control" id="username" placeholder="Nom d'utilisateur" required>
+        <label for="username">Nom d'utilisateur</label>
     </div>
-</div>
+    <div class="form-floating mb-3">
+        <input type="email" class="form-control" id="email" placeholder="name@example.com" required>
+        <label for="email">Adresse e-mail</label>
+    </div>
+    <div class="form-floating mb-3">
+        <input type="password" class="form-control" id="password" placeholder="Mot de passe" required>
+        <label for="password">Mot de passe</label>
+    </div>
+    <div class="d-grid">
+        <button type="submit" class="btn btn-primary btn-lg">S'inscrire</button>
+    </div>
+</form>
+
+<p class="mt-4 text-center text-muted">Déjà un compte ? <a href="/login">Connectez-vous</a></p>
 {% endblock %}
 
 {% block scripts %}
@@ -59,7 +55,7 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
             throw new Error(error.detail || "Erreur lors de l'inscription");
         }
         
-        successAlert.textContent = "Compte créé avec succès ! Vous allez être redirigé vers la page de connexion.";
+        successAlert.innerHTML = "<strong>Succès !</strong> Compte créé. Vous allez être redirigé...";
         successAlert.classList.remove('d-none');
 
         setTimeout(() => { window.location.href = '/login'; }, 2000);

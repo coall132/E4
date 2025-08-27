@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}RecoResto{% endblock %}</title>
+
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,600,700|Raleway:300,400,500,600,700" rel="stylesheet">
+
+    <link href="/static/strategy/assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/static/strategy/assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+
+    <link href="/static/css/strategy_dark_theme.css" rel="stylesheet">
+
+    <style>
+        html, body {
+            height: 100%;
+        }
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: var(--dark-bg);
+        }
+        .auth-card {
+            border: none;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+        }
+        .logo a {
+            color: #fff;
+            text-decoration: none;
+            font-size: 28px;
+            font-weight: 700;
+            font-family: "Raleway", sans-serif;
+        }
+        .logo span {
+            color: var(--primary-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-sm-10 col-md-8 col-lg-6 col-xl-5">
+                <div class="text-center mb-4 logo">
+                    <a href="/">Reco<span>Resto</span></a>
+                </div>
+                <div class="card auth-card">
+                    <div class="card-body p-4 p-md-5">
+                        {% block content %}{% endblock %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function setToken(token) { document.cookie = `auth_token=${token};path=/;max-age=3600;samesite=lax`; }
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

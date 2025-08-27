@@ -1,0 +1,76 @@
+/* API/static/css/strategy_dark_theme.css */
+
+/*
+* Thème sombre pour le template "Strategy"
+*/
+
+:root {
+    --dark-bg: #121212;
+    --dark-surface: #1e1e1e;
+    --dark-border: #333333;
+    --dark-text: #e0e0e0;
+    --dark-text-muted: #a0a0a0;
+    --primary-color: #0d6efd;
+}
+
+body {
+    background-color: var(--dark-bg) !important;
+    color: var(--dark-text) !important;
+}
+
+/* --- Barre de navigation --- */
+#header {
+    background-color: rgba(30, 30, 30, 0.9) !important;
+    border-bottom: 1px solid var(--dark-border);
+}
+
+/* --- Sections et Titres --- */
+.section-title h2, .section-title p {
+    color: var(--dark-text) !important;
+}
+
+/* --- Formulaires --- */
+.card {
+    background-color: var(--dark-surface) !important;
+    border-color: var(--dark-border) !important;
+}
+
+.form-control, .form-select {
+    background-color: #2b2b2b !important;
+    color: var(--dark-text) !important;
+    border-color: #444 !important;
+}
+.form-control:focus, .form-select:focus {
+    box-shadow: 0 0 0 0.2rem rgba(var(--primary-color-rgb), 0.25);
+}
+label {
+    color: var(--dark-text-muted);
+}
+
+/* --- Boutons --- */
+.btn-primary {
+    background-color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+}
+
+/* --- Historique (Accordion) --- */
+.accordion-button {
+    background-color: var(--dark-surface) !important;
+    color: var(--dark-text) !important;
+}
+.accordion-button:not(.collapsed) {
+    background-color: #2a2a2a !important;
+}
+.accordion-body, .accordion-item {
+    background-color: #222 !important;
+    border-color: var(--dark-border) !important;
+}
+.list-group-item {
+    color: var(--dark-text) !important;
+}
+
+/* --- Pied de page --- */
+#footer {
+    background-color: #1a1a1a !important;
+    border-top: 1px solid var(--dark-border);
+}

@@ -1,74 +1,70 @@
 <!DOCTYPE html>
 <html lang="fr">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RecoRestaurant</title>
-    <link href="/passion/css/bootstrap.min.css" rel="stylesheet">
-    <style> body { background-color: #f8f9fa; } </style>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>RecoResto - Votre Recommandation Intelligente</title>
+
+  <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,300i,400,400i,600,600i,700,700i|Raleway:300,300i,400,400i,500,500i,600,600i,700,700i" rel="stylesheet">
+
+  <link href="/static/strategy/assets/vendor/aos/aos.css" rel="stylesheet">
+  <link href="/static/strategy/assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/strategy/assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+  <link href="/static/strategy/assets/vendor/boxicons/css/boxicons.min.css" rel="stylesheet">
+  <link href="/static/strategy/assets/vendor/glightbox/css/glightbox.min.css" rel="stylesheet">
+  <link href="/static/strategy/assets/vendor/swiper/swiper-bundle.min.css" rel="stylesheet">
+
+  <link href="/static/strategy/assets/css/style.css" rel="stylesheet">
+  
+  <link href="/static/css/strategy_dark_theme.css" rel="stylesheet">
 </head>
+
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/app/predict">🤖 RecoResto</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0" id="nav-links">
-                    </ul>
-                <ul class="navbar-nav" id="auth-links">
-                    </ul>
-            </div>
-        </div>
-    </nav>
+  <header id="header" class="fixed-top d-flex align-items-center">
+    <div class="container d-flex align-items-center justify-content-between">
+      <div class="logo">
+        <h1 class="text-light"><a href="/"><span>RecoResto</span></a></h1>
+      </div>
+      <nav id="navbar" class="navbar">
+        <ul>
+          {% if current_user %}
+            <li><a class="nav-link scrollto active" href="/app/predict">Prédiction</a></li>
+            <li><a class="nav-link scrollto" href="/app/history">Historique</a></li>
+            <li><a class="getstarted scrollto" href="#" onclick="logout()">Déconnexion</a></li>
+          {% else %}
+            <li><a class="getstarted scrollto" href="/login">Connexion</a></li>
+          {% endif %}
+        </ul>
+        <i class="bi bi-list mobile-nav-toggle"></i>
+      </nav></div>
+  </header><main id="main">
+    <section class="d-none d-md-block" style="height: 70px;"></section>
+    
+    {% block content %}{% endblock %}
+  </main><footer id="footer">
+    <div class="container py-4">
+      <div class="copyright">
+        &copy; Copyright <strong><span>RecoResto</span></strong>. Tous droits réservés.
+      </div>
+    </div>
+  </footer><a href="#" class="back-to-top d-flex align-items-center justify-content-center"><i class="bi bi-arrow-up-short"></i></a>
 
-    <main class="container mt-4">
-        {% block content %}{% endblock %}
-    </main>
+  <script src="/static/strategy/assets/vendor/aos/aos.js"></script>
+  <script src="/static/strategy/assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+  <script src="/static/strategy/assets/vendor/glightbox/js/glightbox.min.js"></script>
+  <script src="/static/strategy/assets/vendor/isotope-layout/isotope.pkgd.min.js"></script>
+  <script src="/static/strategy/assets/vendor/swiper/swiper-bundle.min.js"></script>
 
-    <script src="/passion/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // --- Gestion de l'authentification côté client ---
-        function setToken(token) {
-            document.cookie = `auth_token=${token};path=/;max-age=3600;samesite=lax`;
-        }
+  <script src="/static/strategy/assets/js/main.js"></script>
 
-        function getToken() {
-            const value = `; ${document.cookie}`;
-            const parts = value.split(`; auth_token=`);
-            if (parts.length === 2) return parts.pop().split(';').shift();
-            return null;
-        }
+  <script>
+    function setToken(token) { document.cookie = `auth_token=${token};path=/;max-age=3600;samesite=lax`; }
+    function getToken() { const v = `; ${document.cookie}`; const p = v.split(`; auth_token=`); if (p.length === 2) return p.pop().split(';').shift(); return null; }
+    function logout() { document.cookie = 'auth_token=;path=/;expires=Thu, 01 Jan 1970 00:00:01 GMT;'; window.location.href = '/login'; }
+  </script>
 
-        function logout() {
-            document.cookie = 'auth_token=;path=/;expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-            window.location.href = '/login';
-        }
-        
-        // --- Mise à jour dynamique de la barre de navigation ---
-        document.addEventListener('DOMContentLoaded', () => {
-            const token = getToken();
-            const navLinks = document.getElementById('nav-links');
-            const authLinks = document.getElementById('auth-links');
+  {% block scripts %}{% endblock %}
 
-            if (token) {
-                navLinks.innerHTML = `
-                    <li class="nav-item"><a class="nav-link" href="/app/predict">Prédiction</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/app/history">Historique</a></li>
-                    <li class="nav-item"><a class="nav-link disabled" href="#">Données</a></li>
-                `;
-                authLinks.innerHTML = `
-                    <li class="nav-item"><a class="btn btn-outline-warning" href="#" onclick="logout()">Déconnexion</a></li>
-                `;
-            } else {
-                 authLinks.innerHTML = `
-                    <li class="nav-item"><a class="nav-link" href="/login">Connexion</a></li>
-                    <li class="nav-item"><a class="btn btn-primary" href="/register">S'inscrire</a></li>
-                 `;
-            }
-        });
-    </script>
-    {% block scripts %}{% endblock %}
 </body>
 </html>
