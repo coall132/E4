@@ -394,3 +394,10 @@ async def home(request: Request,current_user: Optional[models.User] = Depends(ge
     if not current_user:
         return RedirectResponse(url="/login")
     return templates.TemplateResponse("home.html",{"request": request,"ACTIVE": "home","user": current_user,},)
+
+@app.get("/predict", response_class=HTMLResponse, name="ui_predict")
+def ui_predict(request: Request):
+    token = request.cookies.get("ACCESS_TOKEN")
+    if not token:
+        return RedirectResponse(url="/login", status_code=303)
+    return templates.TemplateResponse("predict.html", {"request": request})
