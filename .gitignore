@@ -216,7 +216,6 @@ API/forms_restaurants_dept37_single_cp.csv
 **/*.pyc
 **/.pytest_cache/
 API/.pytest_cache/
-API/tests/
 API/.mypy_cache/
 API/.ruff_cache/
 API/artifacts/
