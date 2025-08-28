@@ -2,6 +2,7 @@ from typing import Any, List
 import json
 import numpy as np
 import pandas as pd
+from API import models
 
 def _parse_vec(v: Any):
     if v is None:
@@ -152,3 +153,47 @@ def _infer_embed_dim(df: pd.DataFrame, default: int = 1024) -> int:
         for v in df["desc_embed"]:
             if isinstance(v, np.ndarray) and v.ndim == 1:
                 return int(v.shape[0])
+            
+def _format_opening_periods(periods: list[models.OpeningPeriod]):
+    """
+    Transforme OpeningPeriod en dict {JourFr: 'HH:MM–HH:MM, ...'}
+    NB: on suppose open_day dans [0..6] avec 0=Dimanche (classique Google).
+    """
+    jours_fr = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"]
+    slots: dict[int, list[str]] = {i: [] for i in range(7)}
+
+    def _hhmm(h, m):
+        if h is None or m is None:
+            return None
+        return f"{int(h):02d}:{int(m):02d}"
+
+    for p in periods:
+        od, oh, om = p.open_day, p.open_hour, p.open_minute
+        ch, cm = p.close_hour, p.close_minute
+        start = _hhmm(oh, om)
+        end   = _hhmm(ch, cm)
+        if start and end and od is not None and 0 <= od <= 6:
+            slots[od].append(f"{start}–{end}")
+
+    # ne renvoyer que les jours qui ont au moins une plage
+    out = {}
+    for i, plages in slots.items():
+        if plages:
+            out[jours_fr[i]] = ", ".join(plages)
+    return out
+
+def _pricelevel_to_int(pl):
+    """
+    priceLevel est une chaîne chez toi (ex: 'PRICE_LEVEL_MODERATE' ou '2').
+    """
+    if pl is None:
+        return None
+    mapping = {
+        "PRICE_LEVEL_INEXPENSIVE": 1,
+        "PRICE_LEVEL_MODERATE": 2,
+        "PRICE_LEVEL_EXPENSIVE": 3,
+        "PRICE_LEVEL_VERY_EXPENSIVE": 4,
+        "1": 1, "2": 2, "3": 3, "4": 4,
+        1: 1, 2: 2, 3: 3, 4: 4,
+    }
+    return mapping.get(str(pl), None)

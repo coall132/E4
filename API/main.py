@@ -472,36 +472,76 @@ def ui_predict(request: Request):
     return templates.TemplateResponse("predict.html", {"request": request})
 
 @app.get("/restaurant/{etab_id}", tags=["ui"])
-def get_restaurant_detail(etab_id: int, db: Session = Depends(get_db)):
-    # utilisez vos modèles pour récupérer toutes les infos utiles
-    # description, adresse, téléphone, site web, rating, horaires, etc.
-    etab = db.query(models.Etablissement).get(etab_id)
+def restaurant_detail(etab_id: int, db: Session = Depends(get_db)):
+    etab = (
+        db.query(models.Etablissement)
+        .filter(models.Etablissement.id_etab == etab_id)
+        .first()
+    )
     if not etab:
-        raise HTTPException(404, "Restaurant introuvable")
-    details = {
+        raise HTTPException(status_code=404, detail="Restaurant introuvable")
+
+    # Options (table 'public.options')
+    opt = (
+        db.query(models.Options)
+        .filter(models.Options.id_etab == etab_id)
+        .first()
+    )
+    options = {
+        "allowsDogs": bool(opt.allowsDogs) if opt and opt.allowsDogs is not None else False,
+        "delivery": bool(opt.delivery) if opt and opt.delivery is not None else False,
+        "goodForChildren": bool(opt.goodForChildren) if opt and opt.goodForChildren is not None else False,
+        "goodForGroups": bool(opt.goodForGroups) if opt and opt.goodForGroups is not None else False,
+        "goodForWatchingSports": bool(opt.goodForWatchingSports) if opt and opt.goodForWatchingSports is not None else False,
+        "outdoorSeating": bool(opt.outdoorSeating) if opt and opt.outdoorSeating is not None else False,
+        "reservable": bool(opt.reservable) if opt and opt.reservable is not None else False,
+        "restroom": bool(opt.restroom) if opt and opt.restroom is not None else False,
+        "servesVegetarianFood": bool(opt.servesVegetarianFood) if opt and opt.servesVegetarianFood is not None else False,
+        "servesBrunch": bool(opt.servesBrunch) if opt and opt.servesBrunch is not None else False,
+        "servesBreakfast": bool(opt.servesBreakfast) if opt and opt.servesBreakfast is not None else False,
+        "servesDinner": bool(opt.servesDinner) if opt and opt.servesDinner is not None else False,
+        "servesLunch": bool(opt.servesLunch) if opt and opt.servesLunch is not None else False,
+    }
+
+    # Horaires (table 'public.opening_period')
+    periods = (
+        db.query(models.OpeningPeriod)
+        .filter(models.OpeningPeriod.id_etab == etab_id)
+        .order_by(models.OpeningPeriod.open_day, models.OpeningPeriod.open_hour, models.OpeningPeriod.open_minute)
+        .all()
+    )
+    heures_formatees = utils._format_opening_periods(periods)
+
+    return {
         "id": etab.id_etab,
         "nom": etab.nom,
         "adresse": etab.adresse,
-        "telephone": getattr(etab, "phone", None),
-        "site_web": getattr(etab, "site_web", None),
+        "telephone": etab.internationalPhoneNumber,
+        "site_web": etab.websiteUri,
         "rating": float(etab.rating) if etab.rating is not None else None,
-        "description": getattr(etab, "description", None),
-        # Suppose que vous stockez les horaires en JSON ou colonnes
-        "hours": getattr(etab, "hours", None),
-        # Coordinates for a map
-        "latitude": getattr(etab, "latitude", None),
-        "longitude": getattr(etab, "longitude", None)
+        "price_level": utils._pricelevel_to_int(etab.priceLevel),
+        "description": etab.description,
+        "options": options,
+        "horaires": heures_formatees,
+        "latitude": etab.latitude,
+        "longitude": etab.longitude,
     }
-    return details
 
-# Liste des avis pour un restaurant (optionnel)
 @app.get("/restaurant/{etab_id}/reviews", tags=["ui"])
-def get_restaurant_reviews(etab_id: int, db: Session = Depends(get_db), limit: int = Query(5, ge=1, le=50)):
-    reviews = (
-        db.query(models.Review)  # ou le modèle correspondant
-          .filter(models.Review.etab_id == etab_id)
-          .order_by(models.Review.date.desc())
-          .limit(limit)
-          .all()
+def restaurant_reviews(etab_id: int, db: Session = Depends(get_db)):
+    rows = (
+        db.query(models.Review)
+        .filter(models.Review.id_etab == etab_id)
+        .order_by(models.Review.publishTime.desc())
+        .all()
     )
-    return [{"date": r.date.isoformat(), "rating": r.rating, "comment": r.comment} for r in reviews]
+    # publishTime est une chaîne chez toi; on la renvoie telle quelle
+    return [
+        {
+            "date": r.publishTime,
+            "rating": float(r.rating) if r.rating is not None else None,
+            "comment": r.original_text,
+            "author": r.author,
+        }
+        for r in rows
+    ]

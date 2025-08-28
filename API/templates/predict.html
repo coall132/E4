@@ -7,14 +7,13 @@
   <h1 class="h4 mb-3">Nouvelle prédiction</h1>
 
   <form id="predict-form" class="row g-3">
-    <!-- Code postal : facultatif -->
-    <div class="col-12 col-md-4">
+    <!-- Code postal facultatif -->
+    <div class="col-6 col-md-4">
       <label for="cp" class="form-label">Code postal (facultatif)</label>
       <input type="text" id="cp" class="form-control" placeholder="Ex : 37000">
     </div>
-
-    <!-- Niveau de prix : facultatif -->
-    <div class="col-12 col-md-4">
+    <!-- Niveau de prix facultatif -->
+    <div class="col-6 col-md-4">
       <label for="price" class="form-label">Niveau de prix (facultatif)</label>
       <select id="price" class="form-select">
         <option value="">— Aucun —</option>
@@ -24,24 +23,21 @@
         <option value="4">€€€€</option>
       </select>
     </div>
-
     <!-- Nombre d’items -->
     <div class="col-12 col-md-4">
       <label for="k" class="form-label">Nombre d’items</label>
       <input type="number" id="k" class="form-control" min="1" max="50" value="3">
       <div class="form-text">Laissez vide pour la valeur par défaut.</div>
     </div>
-
-    <!-- Description : facultative -->
+    <!-- Description -->
     <div class="col-12">
       <label for="desc" class="form-label">Description (facultatif)</label>
       <textarea id="desc" class="form-control" rows="3" placeholder="Vos envies…"></textarea>
     </div>
-
-    <!-- Options multi-sélection : facultatives -->
+    <!-- Options -->
     <div class="col-12">
       <label for="opts" class="form-label">Options souhaitées (facultatif)</label>
-      <select id="opts" class="form-select" multiple size="13">
+      <select id="opts" class="form-select" multiple size="8">
         <option value="allowsDogs">Animaux acceptés</option>
         <option value="delivery">Livraison</option>
         <option value="goodForChildren">Adapté aux enfants</option>
@@ -57,14 +53,12 @@
         <option value="servesDinner">Dîner</option>
       </select>
     </div>
-
-    <!-- Créneau date/heure : conseillé (ton backend exige “open” -> dérivé en JS) -->
+    <!-- Date/heure -->
     <div class="col-12 col-md-6">
       <label for="datetime" class="form-label">Date et heure</label>
       <input type="datetime-local" id="datetime" class="form-control">
       <div class="form-text">Choisissez un jour et une heure (ex. samedi soir).</div>
     </div>
-
     <div class="col-12">
       <button type="submit" class="btn btn-primary">Lancer la prédiction</button>
     </div>
@@ -73,49 +67,43 @@
   <!-- Résultats -->
   <div id="predict-result" class="my-4"></div>
 
-  <!-- Bouton Feedback (affiché après une prédiction) -->
+  <!-- Bouton Feedback -->
   <div id="feedback-button-wrapper" class="my-3 d-none">
-    <button id="open-feedback-btn" type="button" class="btn btn-outline-primary">
-      Laisser un avis
-    </button>
+    <button id="open-feedback-btn" type="button" class="btn btn-outline-primary">Laisser un avis</button>
   </div>
 
-  <!-- Modal Feedback -->
+  <!-- Pop-up Feedback (inchangé) -->
   <div class="modal fade" id="feedbackModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
-      <form class="modal-content">
+      <form class="modal-content" id="feedback-form">
         <div class="modal-header">
           <h5 class="modal-title">Votre avis</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
           <input type="hidden" id="prediction-id">
-          <div class="mb-3">
-            <label class="form-label" for="rating">Note (0–5)</label>
-            <input type="number" min="0" max="5" id="rating" class="form-control">
-          </div>
-          <div class="mb-3">
-            <label class="form-label" for="comment">Commentaire (optionnel)</label>
-            <textarea id="comment" class="form-control" rows="3"></textarea>
-          </div>
+          <label class="form-label">Note (0–5)</label>
+          <input type="number" min="0" max="5" id="rating" class="form-control">
+          <label class="form-label mt-3">Commentaire (optionnel)</label>
+          <textarea id="comment" class="form-control"></textarea>
         </div>
         <div class="modal-footer">
-          <button id="feedback-submit" type="submit" class="btn btn-primary">Envoyer</button>
+          <button type="submit" class="btn btn-primary">Envoyer</button>
         </div>
       </form>
     </div>
   </div>
 
-  <!-- Modal Détails Restaurant -->
+  <!-- Modale Détails -->
   <div class="modal fade" id="detailModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
       <div class="modal-content bg-dark text-white">
         <div class="modal-header">
           <h5 class="modal-title" id="detailModalTitle">Détails du restaurant</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fermer"></button>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body" id="detailModalBody">
-          <!-- Le contenu (description, adresse, téléphone, site, note, horaires, carte, avis) sera injecté par JS -->
+          <!-- Contenu chargé par JavaScript -->
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
@@ -123,7 +111,6 @@
       </div>
     </div>
   </div>
-
 </div>
 {% endblock %}
 
