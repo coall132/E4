@@ -471,6 +471,14 @@ def ui_predict(request: Request):
         return RedirectResponse(url="/login", status_code=303)
     return templates.TemplateResponse("predict.html", {"request": request})
 
+@app.get("/history", response_class=HTMLResponse, name="history")
+def history_page(request: Request):
+    # exiger l’authentification (sinon rediriger)
+    token = request.cookies.get("ACCESS_TOKEN")
+    if not token:
+        return RedirectResponse(url="/login", status_code=303)
+    return templates.TemplateResponse("history.html", {"request": request, "ACTIVE": "history"})
+
 @app.get("/restaurant/{etab_id}", tags=["ui"])
 def restaurant_detail(etab_id: int, db: Session = Depends(get_db)):
     etab = (
@@ -545,3 +553,100 @@ def restaurant_reviews(etab_id: int, db: Session = Depends(get_db)):
         }
         for r in rows
     ]
+
+@app.get("/history/predictions", tags=["ui"])
+def history_predictions(
+    skip: int = 0,
+    limit: int = 30,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(CRUD.current_user_id),
+):
+    rows = (
+        db.query(models.Prediction)
+        .options(
+            selectinload(models.Prediction.items),
+            selectinload(models.Prediction.form),  # pour accéder au formulaire
+        )
+        .filter(models.Prediction.user_id == user_id)
+        .order_by(models.Prediction.id.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    def summarize_form(form):
+        if not form:
+            return {}
+        return {
+            "created_at": form.created_at.isoformat() if getattr(form, "created_at", None) else None,
+            "price_level": form.price_level,
+            "city": form.city,
+            "open": form.open,
+            "options": form.options,
+            "description": form.description,
+        }
+
+    out = []
+    for p in rows:
+        fb = db.query(models.Feedback).filter(models.Feedback.prediction_id == p.id).first()
+        out.append({
+            "id": str(p.id),
+            "k": p.k,
+            "model_version": p.model_version,
+            "latency_ms": p.latency_ms,
+            "items_count": len(p.items),
+            "form": summarize_form(p.form),
+            "feedback": {
+                "rating": fb.rating if fb else None,
+                "comment": fb.comment if fb else None,
+            },
+        })
+    return out
+
+@app.get("/history/prediction/{pred_id}", tags=["ui"])
+def get_prediction_detail(pred_id: str, db: Session = Depends(get_db), user_id: int = Depends(CRUD.current_user_id)):
+    # Cast UUID proprement pour Postgres UUID
+    try:
+        pred_uuid = uuid.UUID(pred_id)
+    except Exception:
+        raise HTTPException(400, "pred_id invalide")
+
+    pred = (
+        db.query(models.Prediction)
+        .options(
+            selectinload(models.Prediction.items),
+            selectinload(models.Prediction.form),
+        )
+        .filter(models.Prediction.id == pred_uuid, models.Prediction.user_id == user_id)
+        .first()
+    )
+    if not pred:
+        raise HTTPException(404, "Prédiction introuvable")
+
+    fb = db.query(models.Feedback).filter(models.Feedback.prediction_id == pred_uuid).first()
+
+    form = pred.form
+    form_json = {
+        "created_at": form.created_at.isoformat() if getattr(form, "created_at", None) else None,
+        "price_level": form.price_level if form else None,
+        "city": form.city if form else None,
+        "open": form.open if form else None,
+        "options": form.options if form else None,
+        "description": form.description if form else None,
+    }
+
+    return {
+        "id": str(pred.id),
+        "k": pred.k,
+        "model_version": pred.model_version,
+        "latency_ms": pred.latency_ms,
+        "form": form_json,
+        "feedback": {
+            "rating": fb.rating if fb else None,
+            "comment": fb.comment if fb else None,
+        },
+        "items": [
+            {"rank": itm.rank, "etab_id": itm.etab_id, "score": float(itm.score)}
+            for itm in sorted(pred.items, key=lambda i: i.rank)
+        ],
+    }

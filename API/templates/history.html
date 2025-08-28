@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% set ACTIVE = "history" %}
+{% block title %}Historique{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h1 class="h4 mb-3">Historique des prédictions</h1>
+
+  <!-- Liste des prédictions -->
+  <div id="history-list">
+    <p class="text-muted">Chargement…</p>
+  </div>
+
+  <!-- Modale : détail d'une prédiction -->
+  <div class="modal fade" id="predDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content bg-dark text-white">
+        <div class="modal-header">
+          <h5 class="modal-title">Détail de la prédiction</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" id="predDetailBody">
+          <!-- contenu dynamique -->
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale : détail restaurant (réutilisée par history.js si predict.js n'est pas chargé) -->
+  <div class="modal fade" id="detailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content bg-dark text-white">
+        <div class="modal-header">
+          <h5 class="modal-title" id="detailModalTitle">Restaurant</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" id="detailModalBody">
+          <!-- rempli dynamiquement -->
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modale feedback (même IDs que sur /predict pour réutiliser le code) -->
+  <div class="modal fade" id="feedbackModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <form class="modal-content" id="feedback-form">
+        <div class="modal-header">
+          <h5 class="modal-title">Votre avis</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="prediction-id">
+          <div class="mb-3">
+            <label class="form-label">Note (0–5)</label>
+            <input type="number" min="0" max="5" id="rating" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Commentaire (optionnel)</label>
+            <textarea id="comment" class="form-control"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" type="submit">Envoyer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- On charge aussi predict.js pour réutiliser chargerDetail/feedback si présent -->
+<script src="{{ url_for('static', path='js/predict.js') }}"></script>
+<script src="{{ url_for('static', path='js/history.js') }}"></script>
+{% endblock %}
