@@ -6,69 +6,70 @@
 <div class="container py-4">
   <h1 class="h4 mb-3">Nouvelle prédiction</h1>
 
-  <!-- Formulaire -->
-  <form id="predict-form" class="row g-3">
-    <!-- Code postal -->
-    <div class="col-6 col-md-4">
-      <label for="cp" class="form-label">Code postal</label>
-      <input type="text" id="cp" class="form-control" maxlength="5" pattern="\\d{5}" required>
-    </div>
+    <form id="predict-form" class="row g-3">
+  <!-- Code postal : plus aucune contrainte -->
+        <div class="col-6 col-md-4">
+            <label for="cp" class="form-label">Code postal (facultatif)</label>
+            <input type="text" id="cp" class="form-control" placeholder="Ex : 37000">
+        </div>
 
-    <!-- Niveau de prix -->
-    <div class="col-6 col-md-4">
-      <label for="price" class="form-label">Niveau de prix</label>
-      <select id="price" class="form-select">
-        <option value="1">€</option>
-        <option value="2" selected>€€</option>
-        <option value="3">€€€</option>
-        <option value="4">€€€€</option>
-      </select>
-    </div>
+        <!-- Niveau de prix : pas obligatoire -->
+        <div class="col-6 col-md-4">
+            <label for="price" class="form-label">Niveau de prix (facultatif)</label>
+            <select id="price" class="form-select">
+            <option value="">— Aucun —</option>
+            <option value="1">€</option>
+            <option value="2">€€</option>
+            <option value="3">€€€</option>
+            <option value="4">€€€€</option>
+            </select>
+        </div>
 
-    <!-- Nombre d’items -->
-    <div class="col-12 col-md-4">
-      <label for="k" class="form-label">Nombre d’items</label>
-      <input type="number" id="k" class="form-control" min="1" max="50" value="10">
-    </div>
+        <!-- Nombre d’items : facultatif -->
+        <div class="col-12 col-md-4">
+            <label for="k" class="form-label">Nombre d’items (facultatif)</label>
+            <input type="number" id="k" class="form-control" min="1" max="50" value="">
+            <div class="form-text">Laissez vide pour la valeur par défaut.</div>
+        </div>
 
-    <!-- Description -->
-    <div class="col-12">
-      <label for="desc" class="form-label">Description</label>
-      <textarea id="desc" class="form-control" rows="3" placeholder="Je cherche…"></textarea>
-    </div>
+        <!-- Description : facultative -->
+        <div class="col-12">
+            <label for="desc" class="form-label">Description (facultatif)</label>
+            <textarea id="desc" class="form-control" rows="3" placeholder="Vos envies…"></textarea>
+        </div>
 
-    <!-- Options multi-sélection -->
-    <div class="col-12">
-      <label for="opts" class="form-label">Options souhaitées</label>
-      <select id="opts" class="form-select" multiple size="8">
-        <option value="allowsDogs">Animaux acceptés</option>
-        <option value="delivery">Livraison</option>
-        <option value="goodForChildren">Adapté aux enfants</option>
-        <option value="goodForGroups">Adapté aux groupes</option>
-        <option value="goodForWatchingSports">TV / sports</option>
-        <option value="outdoorSeating">Terrasse extérieure</option>
-        <option value="reservable">Réservable</option>
-        <option value="restroom">Toilettes</option>
-        <option value="servesVegetarianFood">Végétarien</option>
-        <option value="servesBrunch">Brunch</option>
-        <option value="servesBreakfast">Petit‑déjeuner</option>
-        <option value="servesLunch">Déjeuner</option>
-        <option value="servesDinner">Dîner</option>
-      </select>
-    </div>
+        <!-- Options multi-sélection : facultatives -->
+        <div class="col-12">
+            <label for="opts" class="form-label">Options souhaitées (facultatif)</label>
+            <select id="opts" class="form-select" multiple size="8">
+            <option value="allowsDogs">Animaux acceptés</option>
+            <option value="delivery">Livraison</option>
+            <option value="goodForChildren">Adapté aux enfants</option>
+            <option value="goodForGroups">Adapté aux groupes</option>
+            <option value="goodForWatchingSports">TV / sports</option>
+            <option value="outdoorSeating">Terrasse extérieure</option>
+            <option value="reservable">Réservable</option>
+            <option value="restroom">Toilettes</option>
+            <option value="servesVegetarianFood">Végétarien</option>
+            <option value="servesBrunch">Brunch</option>
+            <option value="servesBreakfast">Petit-déjeuner</option>
+            <option value="servesLunch">Déjeuner</option>
+            <option value="servesDinner">Dîner</option>
+            </select>
+        </div>
 
-    <!-- Créneau date/heure -->
-    <div class="col-12 col-md-6">
-      <label for="datetime" class="form-label">Date &amp; heure</label>
-      <input type="datetime-local" id="datetime" class="form-control">
-      <div class="form-text">Converti automatiquement en clé `open_…` selon le jour et le moment.</div>
-    </div>
+        <!-- Créneau date/heure : reste obligatoire -->
+        <div class="col-12 col-md-6">
+            <label for="datetime" class="form-label">Date et heure (obligatoire)</label>
+            <input type="datetime-local" id="datetime" class="form-control" >
+            <div class="form-text">Choisissez un jour et une heure (par exemple samedi soir).</div>
+        </div>
 
-    <!-- Bouton -->
-    <div class="col-12">
-      <button type="submit" class="btn btn-primary">Lancer la prédiction</button>
-    </div>
-  </form>
+        <div class="col-12">
+            <button type="submit" class="btn btn-primary">Lancer la prédiction</button>
+        </div>
+    </form>
+
 
   <!-- Conteneur résultats -->
   <div id="predict-result" class="my-4"></div>
