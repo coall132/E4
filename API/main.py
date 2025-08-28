@@ -182,10 +182,6 @@ async def get_optional_current_user(request: Request, db: Session = Depends(get_
         return user
     except HTTPException:
         return None
-    
-@app.get("/")
-def read_root():
-    return {"message": "Bienvenue sur l'API des restaurants. Allez sur /docs pour voir les endpoints."}
 
 @app.post("/auth/api-keys", response_model=schema.ApiKeyResponse, tags=["Auth"])
 def create_api_key(API_key_in: schema.ApiKeyCreate,password:str, db: Session = Depends(get_db)):
