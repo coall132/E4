@@ -162,9 +162,10 @@ def warmup():
         feature_cols = [c for c in X_probe_df.columns if c != "id_etab"]
         app.state.FEATURE_COLS = feature_cols
 
+       if app.state.ML_MODEL is None:
         if app.state.PREPROC is None and feature_cols:
-            app.state.PREPROC = make_preproc_final().fit(X_probe_df[feature_cols].to_numpy())
-            print("[startup] PREPROC fallback créé et fit sur features de probe (DEV ONLY).")
+            app.state.PREPROC = make_preproc_final().fit(X_probe_df[feature_cols])
+            print("[startup] PREPROC fallback créé et fit sur features de probe (dev only)")
     else:
         app.state.FEATURE_COLS = []
 
