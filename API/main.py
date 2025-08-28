@@ -378,25 +378,60 @@ def get_user_predictions(
     return results
 
 
-@app.get("/", include_in_schema=False)
-def root(user: models.User = Depends(get_optional_current_user)):
-    if user:
-        return RedirectResponse(url="/app/predict")
-    return RedirectResponse(url="/login")
+@app.get("/", name="home", response_class=HTMLResponse)
+async def ui_home(request: Request):
+    # si non connecté, rediriger vers /login
+    try:
+        await CRUD.get_current_subject(request)
+    except Exception:
+        return RedirectResponse("/login")
+    return templates.TemplateResponse("home.html", {"request": request, "ACTIVE": "home"})
 
-@app.get("/app/predict", response_class=HTMLResponse, tags=["Site Web"])
-async def predict_page(request: Request, user: models.User = Depends(get_optional_current_user)):
-    return templates.TemplateResponse("predict.html", {"request": request, "current_user": user})
+@app.get("/predict", name="predict_page", response_class=HTMLResponse)
+async def ui_predict(request: Request):
+    try:
+        await CRUD.get_current_subject(request)
+    except Exception:
+        return RedirectResponse("/login")
+    return templates.TemplateResponse("predict.html", {"request": request, "ACTIVE": "predict"})
 
-@app.get("/app/history", response_class=HTMLResponse, tags=["Site Web"])
-async def history_page(request: Request, user: models.User = Depends(get_optional_current_user)):
-    return templates.TemplateResponse("history.html", {"request": request, "current_user": user})
+@app.get("/restaurants", name="restaurants_page", response_class=HTMLResponse)
+async def ui_restaurants(request: Request):
+    try:
+        await CRUD.get_current_subject(request)
+    except Exception:
+        return RedirectResponse("/login")
+    return templates.TemplateResponse("restaurants.html", {"request": request, "ACTIVE": "restaurants"})
 
-# MODIFICATION: Les pages de login/register doivent passer `current_user` à `base.html`
-@app.get("/login", response_class=HTMLResponse, tags=["Site Web"])
-async def login_page(request: Request, user: models.User = Depends(get_optional_current_user)):
-    return templates.TemplateResponse("login.html", {"request": request, "current_user": user})
+@app.get("/login", name="login_page", response_class=HTMLResponse)
+def ui_login(request: Request):
+    # page de connexion disponible sans être authentifié
+    return templates.TemplateResponse("login.html", {"request": request, "ACTIVE": "login"})
 
-@app.get("/register", response_class=HTMLResponse, tags=["Site Web"])
-async def register_page(request: Request, user: models.User = Depends(get_optional_current_user)):
-    return templates.TemplateResponse("register.html", {"request": request, "current_user": user})
+@app.get("/register", name="register_page", response_class=HTMLResponse)
+def ui_register(request: Request):
+    return templates.TemplateResponse("register.html", {"request": request, "ACTIVE": "register"})
+
+@app.get("/ui/api/restaurants")
+def ui_api_restaurants(
+    q: str = "",
+    city: str | None = None,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    query = db.query(models.Etablissement)
+    if q:
+        query = query.filter(models.Etablissement.nom.ilike(f"%{q}%"))
+    if city:
+        query = query.filter(models.Etablissement.code_postal.ilike(f"%{city}%"))
+    rows = query.limit(max(1, min(limit, 200))).all()
+    out = []
+    for r in rows:
+        out.append({
+            "id": getattr(r, "id", None),
+            "nom": getattr(r, "nom", None),
+            "adresse": getattr(r, "adresse", None),
+            "code_postal": getattr(r, "code_postal", None),
+            "rating": float(getattr(r, "rating", 0) or 0),
+        })
+    return {"items": out}

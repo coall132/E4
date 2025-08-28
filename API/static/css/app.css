@@ -1,0 +1,3 @@
+/* petites retouches avec Strategy */
+.navbar .active, .header .navbar a.active { font-weight: 600; }
+.list-group-item { border-radius: .5rem; margin-bottom: .5rem; }

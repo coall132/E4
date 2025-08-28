@@ -1,62 +1,67 @@
-<!DOCTYPE html>
+{% set ACTIVE = ACTIVE or "" %}
+<!doctype html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}RecoResto{% endblock %}</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,600,700|Raleway:300,400,500,600,700" rel="stylesheet">
+  <!-- STRATEGY THEME -->
+  <link href="{{ url_for('static', path='strategy/assets/vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', path='strategy/assets/vendor/bootstrap-icons/bootstrap-icons.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', path='strategy/assets/css/main.css') }}" rel="stylesheet">
 
-    <link href="/static/strategy/assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
-    <link href="/static/strategy/assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+  <!-- tiny tweaks -->
+  <link href="{{ url_for('static', path='css/app.css') }}" rel="stylesheet">
 
-    <link href="/static/css/strategy_dark_theme.css" rel="stylesheet">
-
-    <style>
-        html, body {
-            height: 100%;
-        }
-        body {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background-color: var(--dark-bg);
-        }
-        .auth-card {
-            border: none;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.4);
-        }
-        .logo a {
-            color: #fff;
-            text-decoration: none;
-            font-size: 28px;
-            font-weight: 700;
-            font-family: "Raleway", sans-serif;
-        }
-        .logo span {
-            color: var(--primary-color);
-        }
-    </style>
+  <title>RestauReco</title>
+  <link rel="icon" href="{{ url_for('static', path='strategy/assets/img/favicon.png') }}">
 </head>
 <body>
-    <div class="container">
-        <div class="row justify-content-center">
-            <div class="col-sm-10 col-md-8 col-lg-6 col-xl-5">
-                <div class="text-center mb-4 logo">
-                    <a href="/">Reco<span>Resto</span></a>
-                </div>
-                <div class="card auth-card">
-                    <div class="card-body p-4 p-md-5">
-                        {% block content %}{% endblock %}
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
 
-    <script>
-        function setToken(token) { document.cookie = `auth_token=${token};path=/;max-age=3600;samesite=lax`; }
-    </script>
-    {% block scripts %}{% endblock %}
+<!-- ======= Header / Navbar ======= -->
+<header id="header" class="header d-flex align-items-center fixed-top">
+  <div class="container-fluid container-xl d-flex align-items-center justify-content-between">
+    <a href="{{ url_for('home') }}" class="logo d-flex align-items-center">
+      <h1 class="sitename">RestauReco</h1>
+    </a>
+    <nav id="navbar" class="navbar">
+      <ul>
+        <li><a class="{% if ACTIVE=='home' %}active{% endif %}" href="{{ url_for('home') }}">Accueil</a></li>
+        <li><a class="{% if ACTIVE=='predict' %}active{% endif %}" href="{{ url_for('predict_page') }}">Prédiction</a></li>
+        <li><a class="{% if ACTIVE=='restaurants' %}active{% endif %}" href="{{ url_for('restaurants_page') }}">Données</a></li>
+        <li class="dropdown">
+          <a href="#"><span>Compte</span> <i class="bi bi-chevron-down dropdown-indicator"></i></a>
+          <ul>
+            <li><a class="{% if ACTIVE=='login' %}active{% endif %}" href="{{ url_for('login_page') }}">Se connecter</a></li>
+            <li><a class="{% if ACTIVE=='register' %}active{% endif %}" href="{{ url_for('register_page') }}">Créer une clé API</a></li>
+          </ul>
+        </li>
+      </ul>
+    </nav>
+    <i class="mobile-nav-toggle mobile-nav-show bi bi-list"></i>
+    <i class="mobile-nav-toggle mobile-nav-hide d-none bi bi-x"></i>
+  </div>
+</header>
+<!-- End Header -->
+
+<main id="main" class="mt-5 pt-5">
+  {% block content %}{% endblock %}
+</main>
+
+<footer id="footer" class="footer">
+  <div class="container">
+    <div class="copyright">
+      &copy; <strong><span>RestauReco</span></strong> — Démo
+    </div>
+  </div>
+</footer>
+
+<!-- Vendor JS -->
+<script src="{{ url_for('static', path='strategy/assets/vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ url_for('static', path='strategy/assets/js/main.js') }}"></script>
+
+<!-- App JS -->
+<script src="{{ url_for('static', path='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
 </body>
 </html>
