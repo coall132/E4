@@ -4,62 +4,70 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>RestauReco</title>
-  {# Import des polices Google utilisées par le thème Strategy #}
+
+  <!-- Fonts -->
   <link href="https://fonts.googleapis.com" rel="preconnect">
   <link href="https://fonts.gstatic.com" rel="preconnect" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@100;300;400;500;700;900&family=Raleway:wght@100;200;300;400;500;600;700;800;900&family=Nunito+Sans:wght@200;300;400;600;700;800;900&display=swap" rel="stylesheet">
 
-  {# Import des fichiers CSS du thème Strategy depuis le dossier strategy (monté dans main.py) #}
-  {#
-    Remarque : dans API/main.py, nous avons monté le répertoire
-    STATIC_DIR/"strategy" via `app.mount("/strategy", StaticFiles(...), name="strategy")`.
-    Ainsi, l'appel `url_for('strategy', path='assets/css/main.css')` génère
-    une URL comme `/strategy/assets/css/main.css`.
-  #}
+  <!-- Strategy CSS -->
   <link rel="stylesheet" href="{{ url_for('strategy', path='assets/vendor/bootstrap/css/bootstrap.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('strategy', path='assets/vendor/bootstrap-icons/bootstrap-icons.css') }}">
   <link rel="stylesheet" href="{{ url_for('strategy', path='assets/vendor/aos/aos.css') }}">
   <link rel="stylesheet" href="{{ url_for('strategy', path='assets/vendor/swiper/swiper-bundle.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('strategy', path='assets/vendor/glightbox/css/glightbox.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('strategy', path='assets/css/main.css') }}">
+
+  <!-- Tiny override to keep the 2 auth buttons close together -->
+  <style>
+    .auth-actions { display: flex; align-items: center; gap: .5rem; }
+    /* neutralise toute marge gauche automatique éventuelle du thème */
+    .auth-actions .btn-getstarted { margin-left: 0 !important; }
+  </style>
 </head>
 <body>
-  {# Barre de navigation adaptée au thème Strategy #}
+  <!-- Header -->
   <header id="header" class="header d-flex align-items-center">
     <div class="header-container container-fluid container-xl position-relative d-flex align-items-center justify-content-between">
       <a href="/" class="logo d-flex align-items-center me-auto me-xl-0">
         <h1 class="sitename">RestauReco</h1>
       </a>
+
       <nav id="navmenu" class="navmenu">
         <ul>
           <li><a href="/" {% if ACTIVE == 'home' %}class="active"{% endif %}>Accueil</a></li>
           <li><a href="/predict" {% if ACTIVE == 'predict' %}class="active"{% endif %}>Prédiction</a></li>
-          <li><a href="/data" {% if ACTIVE == 'data' %}class="active"{% endif %}>Data Restaurants</a></li>
-          <li><a href="/login" {% if ACTIVE == 'login' %}class="active"{% endif %}>Se connecter</a></li>
-          <li><a href="/register" {% if ACTIVE == 'register' %}class="active"{% endif %}>Créer un compte</a></li>
           <li><a href="/history" {% if ACTIVE == 'history' %}class="active"{% endif %}>Historique</a></li>
+          <li><a href="/data" {% if ACTIVE == 'data' %}class="active"{% endif %}>Data Restaurants</a></li>
         </ul>
         <i class="mobile-nav-toggle d-xl-none bi bi-list"></i>
       </nav>
-      <a class="btn-getstarted" href="/register">S'inscrire</a>
+
+      <!-- Group the two buttons so justify-content-between doesn't push them apart -->
+      <div class="auth-actions">
+        <a class="btn-getstarted" href="/register">S'inscrire</a>
+        <a class="btn-getstarted" href="/login">Se connecter</a>
+      </div>
     </div>
   </header>
-  <!-- Contenu principal -->
+
+  <!-- Main -->
   <main class="container my-5 flex-fill">
     {% block content %}{% endblock %}
   </main>
-  <!-- Pied de page -->
+
+  <!-- Footer -->
   <footer class="bg-dark text-white text-center py-3 mt-auto">
     © {{ now().year if false else '' }} RestauReco — Démo
   </footer>
-  {# Import des scripts du thème Strategy depuis le dossier strategy (monté dans main.py) #}
+
+  <!-- Strategy JS -->
   <script src="{{ url_for('strategy', path='assets/vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
   <script src="{{ url_for('strategy', path='assets/vendor/aos/aos.js') }}"></script>
   <script src="{{ url_for('strategy', path='assets/vendor/swiper/swiper-bundle.min.js') }}"></script>
   <script src="{{ url_for('strategy', path='assets/vendor/glightbox/js/glightbox.min.js') }}"></script>
   <script src="{{ url_for('strategy', path='assets/vendor/purecounter/purecounter_vanilla.js') }}"></script>
   <script src="{{ url_for('strategy', path='assets/vendor/isotope-layout/isotope.pkgd.min.js') }}"></script>
-  {# script principal du thème #}
   <script src="{{ url_for('strategy', path='assets/js/main.js') }}"></script>
   {% block scripts %}{% endblock %}
 </body>

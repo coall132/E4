@@ -668,42 +668,51 @@ def list_restaurants(
     city: Optional[str] = None,
     price_level: Optional[int] = Query(None, ge=1, le=4),
     open_day: Optional[str] = None,
-    options: Optional[List[str]] = Query(None),  # ex: ["delivery","servesLunch"]
+    options: Optional[List[str]] = Query(None),  # accepte aussi "delivery,reservable"
+    sort_by: Optional[str] = None,               # 'nom' | 'rating' | 'price'/'price_level'
+    sort_dir: Optional[str] = "asc",             # 'asc' | 'desc'
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(get_db)
 ):
     """
-    Recherche dans les restaurants avec filtres facultatifs :
-    - q : terme de recherche dans le nom
-    - city : sous-chaîne du champ adresse (code postal ou ville)
-    - price_level : 1..4 (le champ priceLevel est une chaîne dans E1)
-    - open_day : nom français ou anglais (Lundi, Mardi, etc. ou monday..sunday)
-    - options : liste d’options booléennes à true (delivery, restroom, etc.)
-    - skip / limit pour la pagination
+    Recherche avec filtres + tri/pagination.
+    Tri:
+      - sort_by: 'nom' | 'rating' | 'price' (ou 'price_level')
+      - sort_dir: 'asc' | 'desc'
     """
+
     q0 = db.query(models.Etablissement)
 
-    # jointures facultatives
+    # -- jointures facultatives selon les filtres
+    joined_options = False
     if options:
+        # support CSV "a,b,c" => ["a","b","c"]
+        if len(options) == 1 and isinstance(options[0], str) and "," in options[0]:
+            options = [s for s in options[0].split(",") if s]
         q0 = q0.join(models.Options)
+        joined_options = True
+
     if open_day:
         q0 = q0.join(models.OpeningPeriod)
 
-    # filtres
+    # -- filtres
     if q:
         pattern = f"%{q.lower()}%"
         q0 = q0.filter(models.Etablissement.nom.ilike(pattern))
+
     if city:
         q0 = q0.filter(models.Etablissement.adresse.ilike(f"%{city}%"))
+
     if price_level:
-        # priceLevel est une chaîne : comparer à la valeur (str)
+        # priceLevel est une chaîne dans E1 -> comparer à str
         q0 = q0.filter(models.Etablissement.priceLevel == str(price_level))
+
     if options:
         for opt in options:
-            # on ne filtre que si l'option existe dans le modèle Options
             if hasattr(models.Options, opt):
                 q0 = q0.filter(getattr(models.Options, opt) == True)
+
     if open_day:
         jours = {
             "lundi": 1, "mardi": 2, "mercredi": 3, "jeudi": 4,
@@ -715,37 +724,71 @@ def list_restaurants(
         if d is not None:
             q0 = q0.filter(models.OpeningPeriod.open_day == d)
 
-    q0 = q0.distinct()
-    total = q0.count()
-    rows = q0.offset(skip).limit(limit).all()
+    # -- dédup ID via sous-requête robuste (évite doublons avec JOIN)
+    ids_subq = q0.with_entities(models.Etablissement.id_etab).distinct().subquery()
 
+    total = db.query(ids_subq).count()
+
+    rows_q = (
+        db.query(models.Etablissement)
+        .join(ids_subq, ids_subq.c.id_etab == models.Etablissement.id_etab)
+    )
+
+    # -- TRI (nom / rating / prix)
+    dir_desc = (str(sort_dir).lower() == "desc")
+    if sort_by in ("nom", "rating", "price", "price_level"):
+        if sort_by == "nom":
+            col = models.Etablissement.nom
+        elif sort_by == "rating":
+            col = models.Etablissement.rating
+        else:
+            # priceLevel est une chaîne -> CAST en int pour trier correctement
+            col = cast(models.Etablissement.priceLevel, Integer)
+
+        order_expr = col.desc() if dir_desc else col.asc()
+        try:
+            # Postgres: placer les NULL en fin pour un rendu propre
+            order_expr = order_expr.nulls_last()
+        except Exception:
+            pass
+
+        rows_q = rows_q.order_by(order_expr, models.Etablissement.id_etab.asc())
+    else:
+        # ordre par défaut stable
+        rows_q = rows_q.order_by(models.Etablissement.id_etab.asc())
+
+    rows = rows_q.offset(skip).limit(limit).all()
+
+    # -- rendu
     results = []
     for e in rows:
-        # options résumées (si elles existent)
-        opt_obj = e.options
+        # options résumées si jointes (accès via relation)
         opts = {}
-        if opt_obj:
+        if joined_options and e.options:
             for field in [
                 "allowsDogs","delivery","goodForChildren","goodForGroups",
                 "goodForWatchingSports","outdoorSeating","reservable","restroom",
                 "servesVegetarianFood","servesBrunch","servesBreakfast",
                 "servesDinner","servesLunch"
             ]:
-                val = getattr(opt_obj, field, None)
+                val = getattr(e.options, field, None)
                 if val is not None:
                     opts[field] = bool(val)
-        # format prix (priceLevel est chaîne)
+
+        # price_level (cast sûr)
         price_lvl = None
         try:
-            price_lvl = int(e.priceLevel) if e.priceLevel else None
-        except:
-            pass
+            price_lvl = int(e.priceLevel) if e.priceLevel is not None else None
+        except Exception:
+            price_lvl = None
+
         results.append({
             "id": e.id_etab,
             "nom": e.nom,
-            "adresse": e.adresse,
             "rating": float(e.rating) if e.rating is not None else None,
             "price_level": price_lvl,
+            # on ne renvoie pas l'adresse si tu n’en veux pas côté UI
             "options": opts,
         })
+
     return {"total": total, "items": results}

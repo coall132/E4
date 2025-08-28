@@ -7,16 +7,12 @@
   <div class="mb-3">
     <label for="username" class="form-label">Nom d'utilisateur</label>
     <input type="text" id="username" name="username" class="form-control" placeholder="Votre nom d'utilisateur" required>
-    <div class="invalid-feedback">
-      Veuillez renseigner un nom d'utilisateur.
-    </div>
+    <div class="invalid-feedback">Veuillez renseigner un nom d'utilisateur.</div>
   </div>
   <div class="mb-3">
     <label for="password" class="form-label">Mot de passe</label>
     <input type="password" id="password" name="password" class="form-control" placeholder="Votre mot de passe" required>
-    <div class="invalid-feedback">
-      Veuillez renseigner un mot de passe.
-    </div>
+    <div class="invalid-feedback">Veuillez renseigner un mot de passe.</div>
   </div>
   <button type="submit" class="btn btn-primary w-100">Se connecter</button>
   <p class="mt-3 text-center">Pas encore de compte ? <a href="/register">Créer un compte</a></p>
@@ -26,16 +22,13 @@
 
 {% block scripts %}
 <script>
-// Validation Bootstrap (empêche l'envoi si des champs sont vides)
+// Validation Bootstrap
 (() => {
   'use strict';
   const forms = document.querySelectorAll('.needs-validation');
   Array.from(forms).forEach(form => {
     form.addEventListener('submit', event => {
-      if (!form.checkValidity()) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
+      if (!form.checkValidity()) { event.preventDefault(); event.stopPropagation(); }
       form.classList.add('was-validated');
     }, false);
   });
@@ -46,11 +39,6 @@ function showMsg(text, type="info") {
   box.classList.remove('d-none', 'alert-info', 'alert-success', 'alert-danger', 'alert-warning');
   box.classList.add('alert', `alert-${type}`);
   box.textContent = text;
-}
-
-function getQueryParam(name) {
-  const url = new URL(window.location.href);
-  return url.searchParams.get(name);
 }
 
 const form = document.getElementById('login-form');
@@ -80,21 +68,18 @@ form.addEventListener('submit', async (e) => {
     const token = data.access_token;
     if (!token) throw new Error("Réponse invalide du serveur : access_token manquant.");
 
-    // 1) Garder pour vos appels fetch côté client
+    // Stockage côté client pour fetch()
     localStorage.setItem('ACCESS_TOKEN', token);
 
-    // 2) Cookie lisible par le serveur pour vos pages HTML
-    //    - Path=/ pour toutes les routes
-    //    - Max-Age (fallback 86400s si expires_at absent)
-    //    - SameSite=Lax pour éviter des soucis de navigation
+    // Cookie lisible par le serveur (compatibilité avec ton middleware)
     const maxAge = data.expires_at ? Math.max(1, Math.floor(data.expires_at - (Date.now()/1000))) : 86400;
+    document.cookie = `auth_token=${token}; Path=/; Max-Age=${maxAge}; SameSite=Lax`;
     document.cookie = `ACCESS_TOKEN=${token}; Path=/; Max-Age=${maxAge}; SameSite=Lax`;
 
     showMsg('Connecté ! Redirection…', 'success');
 
-    // Redirection vers ?next=… si présent, sinon accueil
-    const next = getQueryParam('next') || '/';
-    window.location.href = "/";
+    // Redirection immédiate vers l'accueil, sans utiliser ?next=
+    window.location.replace('/');
 
   } catch (err) {
     showMsg(`Erreur : ${err.message}`, 'danger');
