@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% set ACTIVE = "login" %}
+
+{# ---------------------------------------------------------- #}
+{#  Page : Connexion utilisateur                               #}
+{#                                                            #}
+{#  Cette page remplace l'ancienne page de connexion basée    #}
+{#  sur la clé API. Elle propose désormais un formulaire      #}
+{#  classique demandant un nom d'utilisateur et un mot de     #}
+{#  passe. Lors de la soumission, elle appelle l'endpoint     #}
+{#  "/auth/web/token" en envoyant les données au format      #}
+{#  x-www-form-urlencoded. En cas de succès, le jeton JWT est #}
+{#  enregistré dans un cookie nommé "auth_token" pour être    #}
+{#  utilisé par le middleware de l'application.               #}
+{# ---------------------------------------------------------- #}
+
+{% block content %}
+<h1 class="mb-4">Connexion</h1>
+<form id="login-form" class="needs-validation" novalidate>
+  <div class="mb-3">
+    <label for="username" class="form-label">Nom d'utilisateur</label>
+    <input type="text" id="username" name="username" class="form-control" placeholder="Votre nom d'utilisateur" required>
+    <div class="invalid-feedback">
+      Veuillez renseigner un nom d'utilisateur.
+    </div>
+  </div>
+  <div class="mb-3">
+    <label for="password" class="form-label">Mot de passe</label>
+    <input type="password" id="password" name="password" class="form-control" placeholder="Votre mot de passe" required>
+    <div class="invalid-feedback">
+      Veuillez renseigner un mot de passe.
+    </div>
+  </div>
+  <button type="submit" class="btn btn-primary">Se connecter</button>
+  <p class="mt-3">Pas encore de compte ? <a href="/register">Créer un compte</a></p>
+  <p id="login-msg" class="mt-3"></p>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Validation Bootstrap (empêche l'envoi si des champs sont vides)
+(() => {
+  'use strict';
+  const forms = document.querySelectorAll('.needs-validation');
+  Array.from(forms).forEach(form => {
+    form.addEventListener('submit', event => {
+      if (!form.checkValidity()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      form.classList.add('was-validated');
+    }, false);
+  });
+})();
+
+const form = document.getElementById('login-form');
+const msg  = document.getElementById('login-msg');
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  // si le formulaire est invalide, ne rien faire
+  if (!form.checkValidity()) return;
+  msg.textContent = 'Connexion…';
+  const formData = new FormData(form);
+  const username = formData.get('username');
+  const password = formData.get('password');
+  try {
+    const response = await fetch('/auth/web/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({ username: username, password: password })
+    });
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Nom d\'utilisateur ou mot de passe incorrect');
+      }
+      throw new Error('HTTP ' + response.status);
+    }
+    const data = await response.json();
+    // Enregistrer le token dans un cookie pour l'authentification
+    const expires = new Date(data.expires_at * 1000).toUTCString();
+    document.cookie = `auth_token=${data.access_token}; expires=${expires}; path=/`;
+    msg.textContent = 'Connecté ! Redirection…';
+    // Rediriger vers la page d'accueil après connexion
+    window.location.href = '/';
+  } catch (err) {
+    msg.textContent = 'Erreur : ' + err.message;
+  }
+});
+</script>
+{% endblock %}

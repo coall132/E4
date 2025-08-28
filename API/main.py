@@ -1,11 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException, Security, status, Query, Request
+from fastapi import FastAPI, Depends, HTTPException, Security, status, Query, Request, Response
 from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import or_
 from typing import List, Optional
@@ -330,3 +330,65 @@ def submit_feedback(payload: schema.FeedbackIn,sub: str = Depends(CRUD.get_curre
 
     return schema.FeedbackOut()
 
+@app.post("/auth/web/token", response_model=schema.TokenOut, tags=["Auth"])
+def login_for_web_access_token(
+    db: Session = Depends(get_db),
+    form_data: OAuth2PasswordRequestForm = Depends(),
+):
+    user = CRUD.get_user_by_username(db, username=form_data.username)
+    if not user or not user.hashed_password or not CRUD.ph.verify(user.hashed_password, form_data.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Nom d'utilisateur ou mot de passe incorrect",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    token, exp_ts = CRUD.create_access_token(subject=f"user:{user.id}")
+    return schema.TokenOut(access_token=token, expires_at=exp_ts)
+
+
+@app.post("/users", response_model=schema.UserOut, tags=["Auth"])
+def register_user(user: schema.UserCreate, db: Session = Depends(get_db)):
+    # Vérifie l’unicité du nom d’utilisateur et de l’email
+    if CRUD.get_user_by_username(db, username=user.username):
+        raise HTTPException(status_code=409, detail="Ce nom d'utilisateur est déjà pris.")
+    existing = CRUD.get_user_by_email(db, email=user.email)
+    if existing and existing.hashed_password:
+        raise HTTPException(status_code=409, detail="Cet email est déjà utilisé.")
+    return CRUD.create_user(db=db, user=user)
+
+@app.post("/auth/web/login", tags=["Auth"])
+def web_login_and_set_cookie(
+    response: Response,
+    db: Session = Depends(get_db),
+    form_data: OAuth2PasswordRequestForm = Depends(),
+):
+    user = CRUD.get_user_by_username(db, username=form_data.username)
+    if not user or not user.hashed_password or not CRUD.ph.verify(user.hashed_password, form_data.password):
+        raise HTTPException(status_code=401, detail="Identifiants invalides")
+
+    token, exp_ts = CRUD.create_access_token(subject=f"user:{user.id}")
+    # Pose un cookie HttpOnly
+    response.set_cookie(
+        key="auth_token",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=False,  # passe à True si tu es derrière HTTPS
+        max_age=60*60*24*7,  # par ex. 7 jours
+    )
+    return {"ok": True, "expires_at": exp_ts}
+
+# GET /login : page de connexion
+@app.get("/login", name="login_page", response_class=HTMLResponse)
+def ui_login(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request, "ACTIVE": "login"})
+
+# GET /register : page de création de compte
+@app.get("/register", name="register_page", response_class=HTMLResponse)
+def ui_register(request: Request):
+    return templates.TemplateResponse("register.html", {"request": request, "ACTIVE": "register"})
+
+@app.post("/logout")
+def logout(response: Response):
+    response.delete_cookie("auth_token")
+    return {"ok": True}
