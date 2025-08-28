@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% set ACTIVE = "predict" %}
+{% block title %}Prédiction{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h1 class="h4 mb-3">Nouvelle prédiction</h1>
+
+  <!-- Formulaire -->
+  <form id="predict-form" class="row g-3">
+    <!-- Code postal -->
+    <div class="col-6 col-md-4">
+      <label for="cp" class="form-label">Code postal</label>
+      <input type="text" id="cp" class="form-control" maxlength="5" pattern="\\d{5}" required>
+    </div>
+
+    <!-- Niveau de prix -->
+    <div class="col-6 col-md-4">
+      <label for="price" class="form-label">Niveau de prix</label>
+      <select id="price" class="form-select">
+        <option value="1">€</option>
+        <option value="2" selected>€€</option>
+        <option value="3">€€€</option>
+        <option value="4">€€€€</option>
+      </select>
+    </div>
+
+    <!-- Nombre d’items -->
+    <div class="col-12 col-md-4">
+      <label for="k" class="form-label">Nombre d’items</label>
+      <input type="number" id="k" class="form-control" min="1" max="50" value="10">
+    </div>
+
+    <!-- Description -->
+    <div class="col-12">
+      <label for="desc" class="form-label">Description</label>
+      <textarea id="desc" class="form-control" rows="3" placeholder="Je cherche…"></textarea>
+    </div>
+
+    <!-- Options multi-sélection -->
+    <div class="col-12">
+      <label for="opts" class="form-label">Options souhaitées</label>
+      <select id="opts" class="form-select" multiple size="8">
+        <option value="allowsDogs">Animaux acceptés</option>
+        <option value="delivery">Livraison</option>
+        <option value="goodForChildren">Adapté aux enfants</option>
+        <option value="goodForGroups">Adapté aux groupes</option>
+        <option value="goodForWatchingSports">TV / sports</option>
+        <option value="outdoorSeating">Terrasse extérieure</option>
+        <option value="reservable">Réservable</option>
+        <option value="restroom">Toilettes</option>
+        <option value="servesVegetarianFood">Végétarien</option>
+        <option value="servesBrunch">Brunch</option>
+        <option value="servesBreakfast">Petit‑déjeuner</option>
+        <option value="servesLunch">Déjeuner</option>
+        <option value="servesDinner">Dîner</option>
+      </select>
+    </div>
+
+    <!-- Créneau date/heure -->
+    <div class="col-12 col-md-6">
+      <label for="datetime" class="form-label">Date &amp; heure</label>
+      <input type="datetime-local" id="datetime" class="form-control">
+      <div class="form-text">Converti automatiquement en clé `open_…` selon le jour et le moment.</div>
+    </div>
+
+    <!-- Bouton -->
+    <div class="col-12">
+      <button type="submit" class="btn btn-primary">Lancer la prédiction</button>
+    </div>
+  </form>
+
+  <!-- Conteneur résultats -->
+  <div id="predict-result" class="my-4"></div>
+
+  <!-- Modal feedback -->
+  <div class="modal fade" id="feedbackModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <form class="modal-content" id="feedback-form">
+        <div class="modal-header">
+          <h5 class="modal-title">Votre avis</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="prediction-id">
+          <label class="form-label">Notez la recommandation (0–5)</label>
+          <input type="number" min="0" max="5" id="rating" class="form-control" required>
+          <label class="form-label mt-3">Commentaire (optionnel)</label>
+          <textarea id="comment" class="form-control" rows="2"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">Envoyer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/predict.js') }}"></script>
+{% endblock %}
