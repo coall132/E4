@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% set ACTIVE = "data" %}
+{% block title %}Données restaurants{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h1 class="h4 mb-3">Explorer les restaurants</h1>
+
+  <!-- Formulaire de recherche/filtre -->
+  <form id="filter-form" class="row g-3 align-items-end">
+    <div class="col-12 col-md-3">
+      <label class="form-label" for="search">Recherche</label>
+      <input class="form-control" type="text" id="search" placeholder="Nom du restaurant…">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label" for="city">Ville / CP</label>
+      <input class="form-control" type="text" id="city" placeholder="37000">
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label" for="price">Prix</label>
+      <select class="form-select" id="price">
+        <option value="">—</option>
+        <option value="1">€</option>
+        <option value="2">€€</option>
+        <option value="3">€€€</option>
+        <option value="4">€€€€</option>
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <label class="form-label" for="open_day">Jour</label>
+      <select class="form-select" id="open_day">
+        <option value="">—</option>
+        <option value="lundi">Lundi</option>
+        <option value="mardi">Mardi</option>
+        <option value="mercredi">Mercredi</option>
+        <option value="jeudi">Jeudi</option>
+        <option value="vendredi">Vendredi</option>
+        <option value="samedi">Samedi</option>
+        <option value="dimanche">Dimanche</option>
+      </select>
+    </div>
+    <div class="col-6 col-md-3">
+      <label class="form-label">Options</label>
+      <select id="options" class="form-select" multiple size="4">
+        <option value="delivery">Livraison</option>
+        <option value="reservable">Réservable</option>
+        <option value="outdoorSeating">Terrasse extérieure</option>
+        <option value="restroom">Toilettes</option>
+        <option value="servesVegetarianFood">Végétarien</option>
+        <option value="servesLunch">Déjeuner</option>
+        <option value="servesDinner">Dîner</option>
+        <!-- ajoutez d’autres options si nécessaire -->
+      </select>
+    </div>
+    <div class="col-12 col-md-auto">
+      <button type="submit" class="btn btn-primary">Rechercher</button>
+    </div>
+  </form>
+
+  <hr class="mt-4 mb-3">
+
+  <!-- Tableau de résultats -->
+  <div class="table-responsive">
+    <table class="table table-dark table-striped align-middle mb-0" id="data-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nom</th>
+          <th>Adresse</th>
+          <th>Note</th>
+          <th>Prix</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div id="table-info" class="small text-muted mt-2"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/data.js') }}"></script>
+{% endblock %}

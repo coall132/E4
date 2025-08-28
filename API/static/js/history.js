@@ -126,7 +126,7 @@
 
       body.innerHTML = html;
 
-      // Fallback si l'API d'historique ne renvoie PAS items_rich : on enrichit avec /restaurant/{id}
+      // Enrichissement si pas d'items_rich
       if (!d.items_rich || !d.items_rich.length) {
         try {
           const listEl = body.querySelector('#itemsList');
@@ -166,8 +166,7 @@
           if (typeof window.chargerDetail === "function") {
             window.chargerDetail(id); // réutilise predict.js si présent
           } else {
-            // fallback minimal si predict.js n'est pas chargé
-            chargerDetailLocal(id);
+            chargerDetailLocal(id);   // fallback
           }
         });
       });
@@ -259,19 +258,25 @@
     }
   }
 
-  // -------- Feedback depuis l’historique (utilise la même modale)
+  // -------- Feedback depuis l’historique
   (function attachFeedbackHandler(){
     const form = document.getElementById("feedback-form");
     if (!form) return;
+
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
+
       const predId = document.getElementById("prediction-id").value;
       const rating = parseInt(document.getElementById("rating").value || "", 10);
       const comment = document.getElementById("comment").value.trim();
       if (!predId) { alert("Identifiant de prédiction manquant."); return; }
+
       const payload = { prediction_id: predId };
       if (!Number.isNaN(rating)) payload.rating = rating;
       if (comment) payload.comment = comment;
+
+      const submitBtn = form.querySelector('button[type="submit"]');
+      submitBtn?.setAttribute("disabled", "disabled");
 
       try {
         const r = await authFetch("/feedback", {
@@ -279,25 +284,35 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
-        if (!r.ok) {
-          let det = ""; try { det = (await r.json()).detail ?? ""; } catch {}
-          throw new Error(`HTTP ${r.status}` + (det ? " - " + JSON.stringify(det) : ""));
+
+        // Récupérer le corps si possible
+        let data = {};
+        try { data = await r.json(); } catch {}
+
+        // Cas "déjà existant" géré par le backend (409 ou message)
+        if (r.status === 409 || (data && typeof data.detail === "string" && data.detail.includes("déjà existant"))) {
+          // On ferme la modale et on recharge la page (l’état sera à jour)
+          bootstrap.Modal.getInstance(document.getElementById("feedbackModal"))?.hide();
+          window.location.reload();
+          return;
         }
+
+        if (!r.ok) {
+          const det = data?.detail ? ` - ${JSON.stringify(data.detail)}` : "";
+          throw new Error(`HTTP ${r.status}${det}`);
+        }
+
+        // Succès : fermer, reset, recharger la page
         bootstrap.Modal.getInstance(document.getElementById("feedbackModal"))?.hide();
         document.getElementById("rating").value = "";
         document.getElementById("comment").value = "";
-        // petit toast
-        const list = document.getElementById("history-list");
-        const ok = document.createElement("div");
-        ok.className = "alert alert-success";
-        ok.textContent = "Merci pour votre retour !";
-        list.prepend(ok);
-        setTimeout(() => ok.remove(), 3000);
-        // recharger la liste pour refléter le feedback
-        loadHistory();
+        window.location.reload();
+
       } catch (err) {
         alert("Erreur lors de l'envoi du feedback : " + err.message);
         console.error(err);
+      } finally {
+        submitBtn?.removeAttribute("disabled");
       }
     });
   })();

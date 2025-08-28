@@ -383,6 +383,10 @@ def submit_feedback(payload: schema.FeedbackIn,sub: str = Depends(CRUD.get_curre
     if getattr(pred, "user_id", None) not in (None, user_id):
         raise HTTPException(status_code=403, detail="Cette prédiction n'appartient pas à l'utilisateur courant")
     
+    existing = db.query(models.Feedback).filter(models.Feedback.prediction_id == payload.prediction_id).first()
+    if existing:
+        # On ne crée pas un nouveau feedback si un déjà présent
+        return schema.FeedbackOut(status="Feedback déjà existant pour cette prédiction")
 
     row = models.Feedback(prediction_id=pred.id,rating=payload.rating,comment=payload.comment)
     db.add(row); db.commit()
@@ -478,6 +482,13 @@ def history_page(request: Request):
     if not token:
         return RedirectResponse(url="/login", status_code=303)
     return templates.TemplateResponse("history.html", {"request": request, "ACTIVE": "history"})
+
+@app.get("/data", response_class=HTMLResponse, name="data", tags=["ui"])
+def data_page(request: Request):
+    token = request.cookies.get("ACCESS_TOKEN") or request.cookies.get("auth_token")
+    if not token:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse("data.html", {"request": request, "ACTIVE": "data"})
 
 @app.get("/restaurant/{etab_id}", tags=["ui"])
 def restaurant_detail(etab_id: int, db: Session = Depends(get_db)):
@@ -650,3 +661,91 @@ def get_prediction_detail(pred_id: str, db: Session = Depends(get_db), user_id: 
             for itm in sorted(pred.items, key=lambda i: i.rank)
         ],
     }
+
+@app.get("/ui/api/restaurants", tags=["ui"])
+def list_restaurants(
+    q: Optional[str] = None,
+    city: Optional[str] = None,
+    price_level: Optional[int] = Query(None, ge=1, le=4),
+    open_day: Optional[str] = None,
+    options: Optional[List[str]] = Query(None),  # ex: ["delivery","servesLunch"]
+    skip: int = 0,
+    limit: int = 50,
+    db: Session = Depends(get_db)
+):
+    """
+    Recherche dans les restaurants avec filtres facultatifs :
+    - q : terme de recherche dans le nom
+    - city : sous-chaîne du champ adresse (code postal ou ville)
+    - price_level : 1..4 (le champ priceLevel est une chaîne dans E1)
+    - open_day : nom français ou anglais (Lundi, Mardi, etc. ou monday..sunday)
+    - options : liste d’options booléennes à true (delivery, restroom, etc.)
+    - skip / limit pour la pagination
+    """
+    q0 = db.query(models.Etablissement)
+
+    # jointures facultatives
+    if options:
+        q0 = q0.join(models.Options)
+    if open_day:
+        q0 = q0.join(models.OpeningPeriod)
+
+    # filtres
+    if q:
+        pattern = f"%{q.lower()}%"
+        q0 = q0.filter(models.Etablissement.nom.ilike(pattern))
+    if city:
+        q0 = q0.filter(models.Etablissement.adresse.ilike(f"%{city}%"))
+    if price_level:
+        # priceLevel est une chaîne : comparer à la valeur (str)
+        q0 = q0.filter(models.Etablissement.priceLevel == str(price_level))
+    if options:
+        for opt in options:
+            # on ne filtre que si l'option existe dans le modèle Options
+            if hasattr(models.Options, opt):
+                q0 = q0.filter(getattr(models.Options, opt) == True)
+    if open_day:
+        jours = {
+            "lundi": 1, "mardi": 2, "mercredi": 3, "jeudi": 4,
+            "vendredi": 5, "samedi": 6, "dimanche": 0,
+            "monday": 1, "tuesday": 2, "wednesday": 3,
+            "thursday": 4, "friday": 5, "saturday": 6, "sunday": 0,
+        }
+        d = jours.get(open_day.lower())
+        if d is not None:
+            q0 = q0.filter(models.OpeningPeriod.open_day == d)
+
+    q0 = q0.distinct()
+    total = q0.count()
+    rows = q0.offset(skip).limit(limit).all()
+
+    results = []
+    for e in rows:
+        # options résumées (si elles existent)
+        opt_obj = e.options
+        opts = {}
+        if opt_obj:
+            for field in [
+                "allowsDogs","delivery","goodForChildren","goodForGroups",
+                "goodForWatchingSports","outdoorSeating","reservable","restroom",
+                "servesVegetarianFood","servesBrunch","servesBreakfast",
+                "servesDinner","servesLunch"
+            ]:
+                val = getattr(opt_obj, field, None)
+                if val is not None:
+                    opts[field] = bool(val)
+        # format prix (priceLevel est chaîne)
+        price_lvl = None
+        try:
+            price_lvl = int(e.priceLevel) if e.priceLevel else None
+        except:
+            pass
+        results.append({
+            "id": e.id_etab,
+            "nom": e.nom,
+            "adresse": e.adresse,
+            "rating": float(e.rating) if e.rating is not None else None,
+            "price_level": price_lvl,
+            "options": opts,
+        })
+    return {"total": total, "items": results}
