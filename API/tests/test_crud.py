@@ -97,7 +97,7 @@ def test_build_horaires_lines():
     assert mapping["Mardi"] == "10h–11h"
     # other days should be marked as Fermé
     for day in ["Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]:
-        assert mapping[day] == "Fermé"
+        assert mapping[day] == "Fermé" 
 
 
 def test_numeric_bool_to_float():
