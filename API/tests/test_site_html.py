@@ -34,10 +34,10 @@ def test_register_page_has_form_and_fields(client):
 
 
 def test_unauthenticated_pages_redirect(client):
-    r1 = client.get("/", allow_redirects=False)
+    r1 = client.get("/", follow_redirects=False)
     assert r1.status_code in (302, 303, 307)
     assert r1.headers["location"] == "/login"
 
-    r2 = client.get("/predict", allow_redirects=False)
+    r2 = client.get("/predict", follow_redirects=False)
     assert r2.status_code in (302, 303, 307)
     assert r2.headers["location"] == "/login"

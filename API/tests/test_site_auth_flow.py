@@ -39,6 +39,6 @@ def test_register_and_web_login_and_access(client):
     r5 = client.post("/logout")
     assert r5.status_code == 200
 
-    r6 = client.get("/", allow_redirects=False)
+    r6 = client.get("/", follow_redirects=False)
     assert r6.status_code in (302, 303, 307)
     assert r6.headers["location"] == "/login"

@@ -1,7 +1,7 @@
 import pytest
 
 def test_home_redirects_to_login(client):
-    r = client.get("/", allow_redirects=False)
+    r = client.get("/", follow_redirects=False)
     assert r.status_code in (302, 303, 307)
     assert r.headers["location"] == "/login"
 
@@ -16,4 +16,3 @@ def test_logout_clears_cookie(client):
     r = client.post("/logout")
     assert r.status_code == 200
     assert r.json() == {"ok": True}
-
