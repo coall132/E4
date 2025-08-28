@@ -20,8 +20,8 @@ RUN pip install --upgrade pip && \
     pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.6.0
 
 # 2) Runtime deps
-COPY ./API/requirements_api.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+COPY ./API/requirements_api.txt /tmp/requirements_api.txt
+RUN pip install --no-cache-dir -r /tmp/requirements_api.txt
 
 # 3) App code
 COPY ./API /app/API
