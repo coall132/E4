@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 import os
 from fastapi import FastAPI, Depends, HTTPException, Security, status, Query
+from sklearn.pipeline import Pipeline
 from argon2 import PasswordHasher, exceptions as argon_exc
 from pathlib import Path
 import joblib
@@ -497,3 +498,18 @@ def get_predictions_for_user(db: Session, user_id: int):
         .order_by(models.Prediction.form.has(models.FormDB.created_at.desc()))
         .all()
     )
+
+def _is_sklearn_pipeline(model) -> bool:
+    try:
+        return isinstance(model, Pipeline)
+    except Exception:
+        # fallback léger si sklearn n’est pas importable ici
+        return hasattr(model, "steps") and hasattr(model, "predict")
+
+def _numeric_bool_to_float(df):
+    """Garde seulement colonnes numériques/bool et cast bool->float, ordre stable."""
+    num = df.select_dtypes(include=["number", "bool"]).copy()
+    for c in num.columns:
+        if num[c].dtype == bool:
+            num[c] = num[c].astype(float)
+    return num

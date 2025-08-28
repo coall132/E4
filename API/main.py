@@ -163,7 +163,7 @@ def warmup():
         app.state.FEATURE_COLS = feature_cols
 
         if app.state.PREPROC is None and feature_cols:
-            app.state.PREPROC = make_preproc_final().fit(X_probe_df[feature_cols])
+            app.state.PREPROC = make_preproc_final().fit(X_probe_df[feature_cols].to_numpy())
             print("[startup] PREPROC fallback créé et fit sur features de probe (DEV ONLY).")
     else:
         app.state.FEATURE_COLS = []
@@ -215,53 +215,112 @@ def issue_token(API_key_in: Optional[str] = Security(api_key_header), db: Sessio
     return schema.TokenOut(access_token=token, expires_at=exp_ts)
 
 @app.post("/predict", tags=["predict"], dependencies=[Depends(CRUD.get_current_subject)])
-def predict(form: schema.Form,k: int = 3,use_ml: bool = True,user_id: int = Depends(CRUD.current_user_id),db: Session = Depends(get_db)):
+def predict(
+    form: schema.Form,
+    k: int = 10,
+    use_ml: bool = True,
+    user_id: int = Depends(CRUD.current_user_id),
+    db: Session = Depends(get_db),
+):
     t0 = time.perf_counter()
 
+    # 0) Catalogue minimal
     if (not hasattr(app.state, "DF_CATALOG")) or app.state.DF_CATALOG is None or app.state.DF_CATALOG.empty:
         raise HTTPException(500, "Catalogue vide/non chargé.")
     df = app.state.DF_CATALOG
 
+    # 1) Sauvegarde du formulaire (tous champs peuvent être vides)
     try:
-        form_row = models.FormDB(price_level=form.price_level,city=form.city,open=form.open,options=form.options,description=form.description)
+        form_row = models.FormDB(
+            price_level=getattr(form, "price_level", None),
+            city=getattr(form, "city", None),
+            open=getattr(form, "open", None),
+            options=getattr(form, "options", None),
+            description=getattr(form, "description", None),
+        )
         db.add(form_row)
-        db.flush()  
+        db.flush()
         form_id = form_row.id
     except Exception as e:
         db.rollback()
         raise HTTPException(500, f"Insertion du formulaire impossible: {e}")
 
+    # 2) Features (brutes) + proxy scores
     anchors = getattr(app.state, "ANCHORS", None)
-    X_df, gains_proxy = build_item_features_df(df=df,form=form.model_dump(),sent_model=app.state.SENT_MODEL,include_query_consts=True,anchors=anchors)
+    X_df, gains_proxy = build_item_features_df(
+        df=df,
+        form=form.model_dump(),
+        sent_model=app.state.SENT_MODEL,
+        include_query_consts=True,
+        anchors=anchors,
+    )
 
+    # 3) Choix du chemin ML (pipeline vs. estimator+preproc)
     used_ml = False
-    scores = gains_proxy.copy()
+    scores = np.asarray(gains_proxy, dtype=float)  # fallback par défaut (proxy)
 
-    if use_ml and getattr(app.state, "ML_MODEL", None) is not None:
-        model = app.state.ML_MODEL
+    model = getattr(app.state, "ML_MODEL", None)
+    preproc = getattr(app.state, "PREPROC", None)
 
-        # Par défaut: on envoie les features BRUTES au modèle (DataFrame)
-        X_input = X_df.copy()
+    # En entrée du modèle, on enlève l'ID technique et on garde numériques/bools
+    raw = X_df.drop(columns=["id_etab"], errors="ignore")
+    raw_nb = CRUD._numeric_bool_to_float(raw)
 
-        # N'utiliser notre PREPROC que si le modèle n’est PAS un pipeline scikit-learn
-        is_pipeline = hasattr(model, "steps") or hasattr(model, "named_steps")
-        if not is_pipeline and getattr(app.state, "PREPROC", None) is not None:
-            feature_cols = getattr(app.state, "FEATURE_COLS", None) or [c for c in X_df.columns if c != "id_etab"]
-            X_df_aligned = utils._align_df_to_cols(X_df.copy(), feature_cols)
-            X_sp = app.state.PREPROC.transform(X_df_aligned)
-            X_input = X_sp.toarray().astype(np.float32) if hasattr(X_sp, "toarray") else np.asarray(X_sp, dtype=np.float32)
+    if use_ml and model is not None:
+        try:
+            if CRUD._is_sklearn_pipeline(model):
+                # >>> Modèle = Pipeline (contient déjà imputer/scaler/etc.)
+                X_in = raw_nb
 
-        scores = utils._predict_scores(model, X_input)
-        used_ml = True
+                # Ajuste le nombre de colonnes au besoin (n_features_in_ si dispo)
+                n_exp = getattr(model, "n_features_in_", None)
+                if n_exp is not None and X_in.shape[1] != n_exp:
+                    if X_in.shape[1] > n_exp:
+                        X_in = X_in.iloc[:, :n_exp]
+                    else:
+                        # padding zéro si moins de colonnes (rare, mais robuste)
+                        pad = np.zeros((X_in.shape[0], n_exp - X_in.shape[1]), dtype=float)
+                        X_in = np.hstack([X_in.to_numpy(dtype=float), pad])
 
-    k = int(max(1, min(k, 50)))
+                scores = utils._predict_scores(model, X_in)
+                used_ml = True
+
+            else:
+                # >>> Modèle "nu" (estimator) + PREPROC séparé
+                # Aligne, si on a des colonnes de train
+                feat_cols_train = getattr(app.state, "FEATURE_COLS_TRAIN", None) \
+                                  or getattr(app.state, "FEATURE_COLS", None)
+                X_align = utils._align_df_to_cols(raw_nb, feat_cols_train) if feat_cols_train else raw_nb
+
+                if preproc is not None:
+                    X_sp = preproc.transform(X_align)
+                    X_in = X_sp.toarray().astype(np.float32) if hasattr(X_sp, "toarray") else np.asarray(X_sp, dtype=np.float32)
+                    scores = utils._predict_scores(model, X_in)
+                    used_ml = True
+                else:
+                    # Pas de PREPROC pour un estimator nu -> on reste sur gains_proxy
+                    used_ml = False
+
+        except Exception as e:
+            print(f"[predict] chemin ML en échec, fallback proxy: {e}")
+            used_ml = False
+
+    # 4) Top-k
+    k = int(max(1, min(k or 10, 50)))
     order = np.argsort(scores)[::-1]
     sel = order[:k]
 
     latency_ms = int((time.perf_counter() - t0) * 1000)
     model_version = os.getenv("MODEL_VERSION") or getattr(app.state, "MODEL_VERSION", None) or "dev"
 
-    pred_row = models.Prediction(form_id=form_id,k=k,model_version=model_version,latency_ms=latency_ms,status="ok")
+    # 5) Sauvegarde prédiction + items
+    pred_row = models.Prediction(
+        form_id=form_id,
+        k=k,
+        model_version=model_version,
+        latency_ms=str(latency_ms),
+        status="ok",
+    )
     if hasattr(models.Prediction, "user_id"):
         setattr(pred_row, "user_id", user_id)
 
@@ -269,7 +328,8 @@ def predict(form: schema.Form,k: int = 3,use_ml: bool = True,user_id: int = Depe
     for r, i in enumerate(sel, start=1):
         etab_id = int(df.iloc[i]["id_etab"]) if "id_etab" in df.columns else int(i)
         pred_row.items.append(
-            models.PredictionItem(rank=r,etab_id=etab_id,score=float(scores[i]),))
+            models.PredictionItem(rank=r, etab_id=etab_id, score=float(scores[i])),
+        )
 
     try:
         db.add(pred_row)
@@ -279,13 +339,21 @@ def predict(form: schema.Form,k: int = 3,use_ml: bool = True,user_id: int = Depe
         db.rollback()
         raise HTTPException(500, f"Insertion de la prédiction impossible: {e}")
 
+    # 6) Log MLflow (best-effort)
     try:
         pyd_pred = schema.Prediction.model_validate(pred_row)
-        CRUD.log_prediction_event(prediction=pyd_pred,form_dict=form.model_dump(),scores=np.asarray(scores, dtype=float),
-            used_ml=used_ml,latency_ms=latency_ms,model_version=model_version,)
+        CRUD.log_prediction_event(
+            prediction=pyd_pred,
+            form_dict=form.model_dump(),
+            scores=np.asarray(scores, dtype=float),
+            used_ml=used_ml,
+            latency_ms=latency_ms,
+            model_version=model_version,
+        )
     except Exception as e:
         print(f"[mlflow] log_prediction_event failed: {e}")
 
+    # 7) Réponse enrichie
     base = schema.Prediction.model_validate(pred_row).model_dump()
     pred_id = str(pred_row.id)
     base.setdefault("id", pred_id)
