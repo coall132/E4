@@ -392,3 +392,9 @@ def ui_register(request: Request):
 def logout(response: Response):
     response.delete_cookie("auth_token")
     return {"ok": True}
+
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request,current_user: Optional[models.User] = Depends(get_optional_current_user),):
+    if not current_user:
+        return RedirectResponse(url="/login")
+    return templates.TemplateResponse("home.html",{"request": request,"ACTIVE": "home","user": current_user,},)

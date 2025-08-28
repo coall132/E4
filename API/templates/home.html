@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% set ACTIVE = "home" %}
+
+{# ------------------------------------------------------------------------- #}
+{#  Page d'accueil sécurisée                                                 #}
+{#                                                                           #}
+{#  Cette page est affichée à la racine `/`. Elle présente les principales   #}
+{#  fonctionnalités du site et invite l'utilisateur à explorer. Pour    #}
+{#  garantir la sécurité, la route associée vérifie la présence d'un cookie  #}
+{#  `auth_token` et redirige vers `/login` si nécessaire.                    #}
+{# ------------------------------------------------------------------------- #}
+
+{% block content %}
+
+<!-- Section Héros -->
+<section id="hero" class="hero d-flex align-items-center">
+  <div class="container position-relative" data-aos="fade-in">
+    <div class="row gy-5">
+      <div class="col-lg-6 order-lg-1 d-flex flex-column justify-content-center text-center text-lg-start">
+        <h2>Bienvenue sur <span>RestauReco</span></h2>
+        <p>Découvrez et personnalisez vos recommandations de restaurants selon vos envies !</p>
+        <div class="d-flex justify-content-center justify-content-lg-start mt-4">
+          <a href="/predict" class="btn-get-started">Faire une prédiction</a>
+          <a href="/restaurants" class="btn-get-started ms-2">Voir les données</a>
+        </div>
+      </div>
+      <div class="col-lg-6 order-lg-2 text-center">
+        {# Vous pouvez mettre ici une image décorative provenant du thème Strategy #}
+        {# Ex: <img src="{{ url_for('strategy', path='assets/img/hero-img.svg') }}" class="img-fluid" alt=""> #}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Section Fonctionnalités -->
+<section id="features" class="section">
+  <div class="container" data-aos="fade-up">
+    <div class="row gy-4">
+      <div class="col-lg-4">
+        <div class="icon-box d-flex flex-column align-items-center">
+          <div class="icon">
+            <i class="bi bi-graph-up-arrow"></i>
+          </div>
+          <h4>Prédictions personnalisées</h4>
+          <p>Obtenez des recommandations de restaurants basées sur votre profil et nos modèles de Machine Learning.</p>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="icon-box d-flex flex-column align-items-center">
+          <div class="icon">
+            <i class="bi bi-database"></i>
+          </div>
+          <h4>Données riches</h4>
+          <p>Accédez à une base de données complète des restaurants et filtrez-les selon vos critères.</p>
+        </div>
+      </div>
+      <div class="col-lg-4">
+        <div class="icon-box d-flex flex-column align-items-center">
+          <div class="icon">
+            <i class="bi bi-chat-square-dots"></i>
+          </div>
+          <h4>Feedbacks</h4>
+          <p>Laissez votre avis sur les recommandations et aidez-nous à améliorer l’algorithme.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
