@@ -470,3 +470,38 @@ def ui_predict(request: Request):
     if not token:
         return RedirectResponse(url="/login", status_code=303)
     return templates.TemplateResponse("predict.html", {"request": request})
+
+@app.get("/restaurant/{etab_id}", tags=["ui"])
+def get_restaurant_detail(etab_id: int, db: Session = Depends(get_db)):
+    # utilisez vos modèles pour récupérer toutes les infos utiles
+    # description, adresse, téléphone, site web, rating, horaires, etc.
+    etab = db.query(models.Etablissement).get(etab_id)
+    if not etab:
+        raise HTTPException(404, "Restaurant introuvable")
+    details = {
+        "id": etab.id_etab,
+        "nom": etab.nom,
+        "adresse": etab.adresse,
+        "telephone": getattr(etab, "phone", None),
+        "site_web": getattr(etab, "site_web", None),
+        "rating": float(etab.rating) if etab.rating is not None else None,
+        "description": getattr(etab, "description", None),
+        # Suppose que vous stockez les horaires en JSON ou colonnes
+        "hours": getattr(etab, "hours", None),
+        # Coordinates for a map
+        "latitude": getattr(etab, "latitude", None),
+        "longitude": getattr(etab, "longitude", None)
+    }
+    return details
+
+# Liste des avis pour un restaurant (optionnel)
+@app.get("/restaurant/{etab_id}/reviews", tags=["ui"])
+def get_restaurant_reviews(etab_id: int, db: Session = Depends(get_db), limit: int = Query(5, ge=1, le=50)):
+    reviews = (
+        db.query(models.Review)  # ou le modèle correspondant
+          .filter(models.Review.etab_id == etab_id)
+          .order_by(models.Review.date.desc())
+          .limit(limit)
+          .all()
+    )
+    return [{"date": r.date.isoformat(), "rating": r.rating, "comment": r.comment} for r in reviews]
