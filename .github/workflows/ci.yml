@@ -61,6 +61,6 @@ jobs:
         with:
           context: .            
           file: ./API/Dockerfile   
-          target: prod   
+          target: dev   
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/restaurant-api:latest,${{ secrets.DOCKERHUB_USERNAME }}/restaurant-api:${{ github.sha }}
