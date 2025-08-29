@@ -21,9 +21,20 @@ import mlflow, os, uuid, json, time
 from fastapi import Depends, Form
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse, RedirectResponse
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Gauge
+from redis.asyncio import Redis
+import re, asyncio
 
 MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI") 
 MLFLOW_EXP = os.getenv("MLFLOW_EXPERIMENT", "reco-inference")
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+BUCKET_SEC = int(os.getenv("SIGNUP_BUCKET_SEC", "10")) 
+WINDOW_SEC = int(os.getenv("SIGNUP_UNIQUE_IPS_WINDOW_SEC", "300"))  # 5 min
+NUM_BUCKETS = WINDOW_SEC // BUCKET_SEC
+PATH_RE = re.compile(os.getenv("SIGNUP_PATH_REGEX", r"^/(users|register)$"))
+METRICS_LEADER = os.getenv("METRICS_LEADER", "1") == "1"
+PORT = int(os.getenv("EXPORTER_PORT", "9109"))
 
 try :
     from . import utils
@@ -70,6 +81,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+instrumentator = Instrumentator(should_group_status_codes=True,should_ignore_untemplated=True)
+instrumentator.instrument(app).expose(app, endpoint="/metrics", tags=["metrics"])
+
 API_STATIC_KEY = os.getenv("API_STATIC_KEY", "coall")
 api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
 
@@ -86,6 +100,41 @@ models.ensure_ml_schema(engine)
 models._attach_external_tables(engine)
 models.Base.metadata.create_all(bind=engine)
 
+redis = Redis.from_url(REDIS_URL, decode_responses=True)
+Z_UNIQUE = "signup:ip_last_seen" 
+H_BUCKET = "signup:b:"           
+
+
+def _client_ip(req: Request) -> str:
+    xff = req.headers.get("x-forwarded-for")
+    if xff: return xff.split(",")[0].strip()
+    xr = req.headers.get("x-real-ip")
+    if xr: return xr.strip()
+    return req.client.host
+
+def _curr_bucket(now: int) -> int:
+    return (now // BUCKET_SEC) * BUCKET_SEC
+
+async def _incr_ip_bucket(ip: str, now: int):
+    b = _curr_bucket(now)
+    hkey = f"{H_BUCKET}{b}"
+    await redis.hincrby(hkey, ip, 1)
+    await redis.expire(hkey, WINDOW_SEC + BUCKET_SEC + 5)
+
+@app.middleware("http")
+async def _track_signup(request: Request, call_next):
+    try:
+        if request.method == "POST" and PATH_RE.match(request.url.path):
+            ip = _client_ip(request)
+            now = int(time.time())
+            await redis.zadd(Z_UNIQUE, {ip: now})
+            if now % 5 == 0:
+                await redis.zremrangebyscore(Z_UNIQUE, 0, now - WINDOW_SEC)
+            await _incr_ip_bucket(ip, now)
+    except Exception:
+        pass 
+    return await call_next(request)
+
 @app.middleware("http")
 async def check_auth_cookie(request: Request, call_next):
     if request.url.path.startswith("/app/"):
@@ -95,6 +144,7 @@ async def check_auth_cookie(request: Request, call_next):
     
     response = await call_next(request)
     return response
+
 
 @app.on_event("startup")
 def warmup():

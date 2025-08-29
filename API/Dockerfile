@@ -17,7 +17,9 @@ FROM base AS deps
 
 # 1) Torch CPU (no CUDA)
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.6.0
+    pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.6.0 && \
+    pip install --no-cache-dir prometheus-client && \
+    pip install --no-cache-dir redis
 
 # 2) Runtime deps
 COPY ./API/requirements_api.txt /tmp/requirements_api.txt

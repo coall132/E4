@@ -16,3 +16,4 @@ python-dotenv
 scikit-learn
 mlflow
 python-multipart
+prometheus-fastapi-instrumentator==7.0.0

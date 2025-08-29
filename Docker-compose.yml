@@ -15,6 +15,13 @@ services:
       POSTGRES_PORT: 5432
       MLFLOW_TRACKING_URI: http://mlflow:5000
       MLFLOW_EXPERIMENT: restaurant-api
+      PROMETHEUS_MULTIPROC_DIR: /tmp
+      REDIS_URL: redis://redis:6379/0
+      SIGNUP_UNIQUE_IPS_WINDOW_SEC: "300"     
+      SIGNUP_PATH_REGEX: "^/(users|register)$"
+      METRICS_LEADER: "1"   
+    depends_on:
+      - redis                 
     networks:
       - data_network
 
@@ -122,6 +129,12 @@ services:
     restart: unless-stopped
     networks:
       - data_network
+  
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server","--save","","--appendonly","no"]
+    restart: unless-stopped
+    networks: [data_network]
       
 networks:
   data_network:
