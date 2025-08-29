@@ -60,7 +60,6 @@ class UserCreate(BaseModel):
     email: str
     password: str
 
-# AJOUT: Schéma pour retourner les infos d'un utilisateur (sans mdp)
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int

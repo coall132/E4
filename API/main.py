@@ -88,11 +88,9 @@ models.Base.metadata.create_all(bind=engine)
 
 @app.middleware("http")
 async def check_auth_cookie(request: Request, call_next):
-    # Protège uniquement les pages commençant par /app/
     if request.url.path.startswith("/app/"):
         token = request.cookies.get("auth_token")
         if not token:
-            # Si pas de token, on redirige vers la page de connexion
             return RedirectResponse(url="/login")
     
     response = await call_next(request)
@@ -126,7 +124,6 @@ def warmup():
         app.state.PREPROC_FACTORY = getattr(ml, "preproc_factory", None)
         app.state.SENT_MODEL = getattr(ml, "sent_model", None)
         app.state.ML_MODEL = getattr(ml, "rank_model", None)
-        # utile pour tracer la version
         app.state.MODEL_VERSION = (
             os.getenv("MODEL_VERSION")
             or getattr(ml, "rank_model_path", None)
@@ -225,12 +222,10 @@ def predict(
 ):
     t0 = time.perf_counter()
 
-    # 0) Catalogue minimal
     if (not hasattr(app.state, "DF_CATALOG")) or app.state.DF_CATALOG is None or app.state.DF_CATALOG.empty:
         raise HTTPException(500, "Catalogue vide/non chargé.")
     df = app.state.DF_CATALOG
 
-    # 1) Sauvegarde du formulaire (tous champs peuvent être vides)
     try:
         form_row = models.FormDB(
             price_level=getattr(form, "price_level", None),
@@ -246,40 +241,30 @@ def predict(
         db.rollback()
         raise HTTPException(500, f"Insertion du formulaire impossible: {e}")
 
-    # 2) Features (brutes) + proxy scores
     anchors = getattr(app.state, "ANCHORS", None)
-    X_df, gains_proxy = build_item_features_df(
-        df=df,
-        form=form.model_dump(),
-        sent_model=app.state.SENT_MODEL,
-        include_query_consts=True,
-        anchors=anchors,
-    )
+    X_df, gains_proxy = build_item_features_df(df=df,form=form.model_dump(),sent_model=app.state.SENT_MODEL,
+        include_query_consts=True,anchors=anchors)
 
-    # 3) Choix du chemin ML (pipeline vs. estimator+preproc)
+
     used_ml = False
-    scores = np.asarray(gains_proxy, dtype=float)  # fallback par défaut (proxy)
+    scores = np.asarray(gains_proxy, dtype=float)  
 
     model = getattr(app.state, "ML_MODEL", None)
     preproc = getattr(app.state, "PREPROC", None)
 
-    # En entrée du modèle, on enlève l'ID technique et on garde numériques/bools
     raw = X_df.drop(columns=["id_etab"], errors="ignore")
     raw_nb = CRUD._numeric_bool_to_float(raw)
 
     if use_ml and model is not None:
         try:
             if CRUD._is_sklearn_pipeline(model):
-                # >>> Modèle = Pipeline (contient déjà imputer/scaler/etc.)
                 X_in = raw_nb
 
-                # Ajuste le nombre de colonnes au besoin (n_features_in_ si dispo)
                 n_exp = getattr(model, "n_features_in_", None)
                 if n_exp is not None and X_in.shape[1] != n_exp:
                     if X_in.shape[1] > n_exp:
                         X_in = X_in.iloc[:, :n_exp]
                     else:
-                        # padding zéro si moins de colonnes (rare, mais robuste)
                         pad = np.zeros((X_in.shape[0], n_exp - X_in.shape[1]), dtype=float)
                         X_in = np.hstack([X_in.to_numpy(dtype=float), pad])
 
@@ -287,8 +272,6 @@ def predict(
                 used_ml = True
 
             else:
-                # >>> Modèle "nu" (estimator) + PREPROC séparé
-                # Aligne, si on a des colonnes de train
                 feat_cols_train = getattr(app.state, "FEATURE_COLS_TRAIN", None) \
                                   or getattr(app.state, "FEATURE_COLS", None)
                 X_align = utils._align_df_to_cols(raw_nb, feat_cols_train) if feat_cols_train else raw_nb
@@ -299,14 +282,13 @@ def predict(
                     scores = utils._predict_scores(model, X_in)
                     used_ml = True
                 else:
-                    # Pas de PREPROC pour un estimator nu -> on reste sur gains_proxy
                     used_ml = False
 
         except Exception as e:
             print(f"[predict] chemin ML en échec, fallback proxy: {e}")
             used_ml = False
 
-    # 4) Top-k
+
     k = int(max(1, min(k or 10, 50)))
     order = np.argsort(scores)[::-1]
     sel = order[:k]
@@ -314,14 +296,8 @@ def predict(
     latency_ms = int((time.perf_counter() - t0) * 1000)
     model_version = os.getenv("MODEL_VERSION") or getattr(app.state, "MODEL_VERSION", None) or "dev"
 
-    # 5) Sauvegarde prédiction + items
-    pred_row = models.Prediction(
-        form_id=form_id,
-        k=k,
-        model_version=model_version,
-        latency_ms=str(latency_ms),
-        status="ok",
-    )
+    pred_row = models.Prediction(form_id=form_id,k=k,model_version=model_version,latency_ms=str(latency_ms),status="ok",
+                                 )
     if hasattr(models.Prediction, "user_id"):
         setattr(pred_row, "user_id", user_id)
 
@@ -340,7 +316,6 @@ def predict(
         db.rollback()
         raise HTTPException(500, f"Insertion de la prédiction impossible: {e}")
 
-    # 6) Log MLflow (best-effort)
     try:
         pyd_pred = schema.Prediction.model_validate(pred_row)
         CRUD.log_prediction_event(
@@ -354,7 +329,6 @@ def predict(
     except Exception as e:
         print(f"[mlflow] log_prediction_event failed: {e}")
 
-    # 7) Réponse enrichie
     base = schema.Prediction.model_validate(pred_row).model_dump()
     pred_id = str(pred_row.id)
     base.setdefault("id", pred_id)
@@ -385,7 +359,6 @@ def submit_feedback(payload: schema.FeedbackIn,sub: str = Depends(CRUD.get_curre
     
     existing = db.query(models.Feedback).filter(models.Feedback.prediction_id == payload.prediction_id).first()
     if existing:
-        # On ne crée pas un nouveau feedback si un déjà présent
         return schema.FeedbackOut(status="Feedback déjà existant pour cette prédiction")
 
     row = models.Feedback(prediction_id=pred.id,rating=payload.rating,comment=payload.comment)
@@ -417,7 +390,6 @@ def login_for_web_access_token(
 
 @app.post("/users", response_model=schema.UserOut, tags=["Auth"])
 def register_user(user: schema.UserCreate, db: Session = Depends(get_db)):
-    # Vérifie l’unicité du nom d’utilisateur et de l’email
     if CRUD.get_user_by_username(db, username=user.username):
         raise HTTPException(status_code=409, detail="Ce nom d'utilisateur est déjà pris.")
     existing = CRUD.get_user_by_email(db, email=user.email)
@@ -425,42 +397,20 @@ def register_user(user: schema.UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail="Cet email est déjà utilisé.")
     return CRUD.create_user(db=db, user=user)
 
-@app.post("/auth/web/login", tags=["Auth"])
-def web_login_and_set_cookie(
-    response: Response,
-    db: Session = Depends(get_db),
-    form_data: OAuth2PasswordRequestForm = Depends(),
-):
-    user = CRUD.get_user_by_username(db, username=form_data.username)
-    if not user or not user.hashed_password or not CRUD.ph.verify(user.hashed_password, form_data.password):
-        raise HTTPException(status_code=401, detail="Identifiants invalides")
-
-    token, exp_ts = CRUD.create_access_token(subject=f"user:{user.id}")
-    # Pose un cookie HttpOnly
-    response.set_cookie(
-        key="auth_token",
-        value=token,
-        httponly=True,
-        samesite="lax",
-        secure=False,  # passe à True si tu es derrière HTTPS
-        max_age=60*60*24*7,  # par ex. 7 jours
-    )
-    return {"ok": True, "expires_at": exp_ts}
-
-# GET /login : page de connexion
 @app.get("/login", name="login_page", response_class=HTMLResponse)
 def ui_login(request: Request):
     return templates.TemplateResponse("login.html", {"request": request, "ACTIVE": "login"})
 
-# GET /register : page de création de compte
 @app.get("/register", name="register_page", response_class=HTMLResponse)
 def ui_register(request: Request):
     return templates.TemplateResponse("register.html", {"request": request, "ACTIVE": "register"})
 
-@app.post("/logout")
-def logout(response: Response):
-    response.delete_cookie("auth_token")
-    return {"ok": True}
+@app.get("/logout", include_in_schema=False)
+def logout_get(request: Request):
+    target = request.url_for("home") if hasattr(request.app.router, "url_path_for") else "/"
+    resp = RedirectResponse(target, status_code=303)
+    resp.delete_cookie("ACCESS_TOKEN") 
+    return resp
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request,current_user: Optional[models.User] = Depends(get_optional_current_user),):

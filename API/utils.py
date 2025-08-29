@@ -175,7 +175,6 @@ def _format_opening_periods(periods: list[models.OpeningPeriod]):
         if start and end and od is not None and 0 <= od <= 6:
             slots[od].append(f"{start}–{end}")
 
-    # ne renvoyer que les jours qui ont au moins une plage
     out = {}
     for i, plages in slots.items():
         if plages:
