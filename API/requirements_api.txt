@@ -17,3 +17,4 @@ scikit-learn
 mlflow
 python-multipart
 prometheus-fastapi-instrumentator==7.0.0
+httpx==0.27.2

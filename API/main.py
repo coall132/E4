@@ -21,10 +21,13 @@ import mlflow, os, uuid, json, time
 from fastapi import Depends, Form
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse, RedirectResponse
-from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_fastapi_instrumentator import Instrumentator, metrics
 from prometheus_client import Gauge
 from redis.asyncio import Redis
+from fastapi import Form, Request, HTTPException, Depends
+from pydantic import ValidationError
 import re, asyncio
+from API.security.turnstile import verify_turnstile
 
 MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI") 
 MLFLOW_EXP = os.getenv("MLFLOW_EXPERIMENT", "reco-inference")
@@ -35,6 +38,7 @@ NUM_BUCKETS = WINDOW_SEC // BUCKET_SEC
 PATH_RE = re.compile(os.getenv("SIGNUP_PATH_REGEX", r"^/(users|register)$"))
 METRICS_LEADER = os.getenv("METRICS_LEADER", "1") == "1"
 PORT = int(os.getenv("EXPORTER_PORT", "9109"))
+BYPASS = os.getenv("TURNSTILE_DEV_BYPASS", "0") 
 
 try :
     from . import utils
@@ -82,6 +86,7 @@ app.add_middleware(
 )
 
 instrumentator = Instrumentator(should_group_status_codes=True,should_ignore_untemplated=True)
+instrumentator.add(metrics.latency(buckets=(0.005, 0.01, 0.025, 0.05, 0.1,0.25, 0.5, 0.75, 1, 2, 3, 5, 7.5, 10)))
 instrumentator.instrument(app).expose(app, endpoint="/metrics", tags=["metrics"])
 
 API_STATIC_KEY = os.getenv("API_STATIC_KEY", "coall")
@@ -423,10 +428,15 @@ def submit_feedback(payload: schema.FeedbackIn,sub: str = Depends(CRUD.get_curre
     return schema.FeedbackOut()
 
 @app.post("/auth/web/token", response_model=schema.TokenOut, tags=["Auth"])
-def login_for_web_access_token(
-    db: Session = Depends(get_db),
-    form_data: OAuth2PasswordRequestForm = Depends(),
-):
+async def login_for_web_access_token(request: Request,db: Session = Depends(get_db),form_data: OAuth2PasswordRequestForm = Depends(),
+                                     cf_token: str = Form(alias="cf-turnstile-response", default="")):
+
+    remote_ip = request.client.host if request.client else None
+
+    ok, details = await verify_turnstile(cf_token, remote_ip)
+    if not ok and BYPASS==0:
+        raise HTTPException(status_code=400, detail="CAPTCHA failed")
+
     user = CRUD.get_user_by_username(db, username=form_data.username)
     if not user or not user.hashed_password or not CRUD.ph.verify(user.hashed_password, form_data.password):
         raise HTTPException(
@@ -434,26 +444,52 @@ def login_for_web_access_token(
             detail="Nom d'utilisateur ou mot de passe incorrect",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
     token, exp_ts = CRUD.create_access_token(subject=f"user:{user.id}")
     return schema.TokenOut(access_token=token, expires_at=exp_ts)
 
 
+
 @app.post("/users", response_model=schema.UserOut, tags=["Auth"])
-def register_user(user: schema.UserCreate, db: Session = Depends(get_db)):
-    if CRUD.get_user_by_username(db, username=user.username):
-        raise HTTPException(status_code=409, detail="Ce nom d'utilisateur est déjà pris.")
-    existing = CRUD.get_user_by_email(db, email=user.email)
+async def register_user(request: Request, db: Session = Depends(get_db)):
+    # Lire le JSON UNE SEULE FOIS
+    try:
+        data = await request.json()
+    except Exception:
+        raise HTTPException(400, "Corps JSON invalide ou manquant.")
+
+    # Récupérer le token Turnstile, quel que soit le nom de champ que tu envoies
+    cf_token = (data.pop("cf-turnstile-response", None)
+                or data.pop("captcha_token", None))
+    if not cf_token and BYPASS==0:
+        raise HTTPException(400, "Vérification anti-robot manquante.")
+
+    ok, _ = await verify_turnstile(cf_token, _client_ip(request))
+    if not ok and BYPASS==0:
+        raise HTTPException(400, "CAPTCHA failed")
+
+    # Valider/mapper le reste du JSON sur TON schéma existant
+    try:
+        user_in = schema.UserCreate(**data)
+    except ValidationError as e:
+        # Renvoie un 422 propre si les champs user sont invalides
+        raise HTTPException(status_code=422, detail=e.errors())
+
+    # Unicité / création
+    if CRUD.get_user_by_username(db, username=user_in.username):
+        raise HTTPException(409, "Ce nom d'utilisateur est déjà pris.")
+    existing = CRUD.get_user_by_email(db, email=user_in.email)
     if existing and existing.hashed_password:
-        raise HTTPException(status_code=409, detail="Cet email est déjà utilisé.")
-    return CRUD.create_user(db=db, user=user)
+        raise HTTPException(409, "Cet email est déjà utilisé.")
+    return CRUD.create_user(db=db, user=user_in)
 
 @app.get("/login", name="login_page", response_class=HTMLResponse)
 def ui_login(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "ACTIVE": "login"})
+    return templates.TemplateResponse("login.html", {"request": request, "ACTIVE": "login", "TURNSTILE_SITEKEY": os.getenv("TURNSTILE_SITEKEY","")})
 
 @app.get("/register", name="register_page", response_class=HTMLResponse)
 def ui_register(request: Request):
-    return templates.TemplateResponse("register.html", {"request": request, "ACTIVE": "register"})
+    return templates.TemplateResponse("register.html", {"request": request, "ACTIVE": "register", "TURNSTILE_SITEKEY": os.getenv("TURNSTILE_SITEKEY","")})
 
 @app.get("/logout", include_in_schema=False)
 def logout_get(request: Request):

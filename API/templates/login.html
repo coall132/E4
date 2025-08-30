@@ -3,84 +3,160 @@
 
 {% block content %}
 <h1 class="mb-4">Connexion</h1>
+
 <form id="login-form" class="needs-validation" novalidate>
   <div class="mb-3">
     <label for="username" class="form-label">Nom d'utilisateur</label>
-    <input type="text" id="username" name="username" class="form-control" placeholder="Votre nom d'utilisateur" required>
+    <input
+      type="text"
+      id="username"
+      name="username"
+      class="form-control"
+      placeholder="Votre nom d'utilisateur"
+      autocomplete="username"
+      required
+      autofocus
+    >
     <div class="invalid-feedback">Veuillez renseigner un nom d'utilisateur.</div>
   </div>
+
   <div class="mb-3">
     <label for="password" class="form-label">Mot de passe</label>
-    <input type="password" id="password" name="password" class="form-control" placeholder="Votre mot de passe" required>
+    <input
+      type="password"
+      id="password"
+      name="password"
+      class="form-control"
+      placeholder="Votre mot de passe"
+      autocomplete="current-password"
+      required
+    >
     <div class="invalid-feedback">Veuillez renseigner un mot de passe.</div>
   </div>
+
+  <!-- Widget Turnstile (Cloudflare) -->
+  <div class="mb-3">
+    <div
+      class="cf-turnstile"
+      data-sitekey="{{ TURNSTILE_SITEKEY }}"
+      data-theme="auto"
+      data-action="login">
+    </div>
+    <noscript>
+      <div class="text-warning small">Activez JavaScript pour la vérification anti-robot.</div>
+    </noscript>
+  </div>
+
   <button type="submit" class="btn btn-primary w-100">Se connecter</button>
-  <p class="mt-3 text-center">Pas encore de compte ? <a href="/register">Créer un compte</a></p>
+  <p class="mt-3 text-center">
+    Pas encore de compte ? <a href="/register">Créer un compte</a>
+  </p>
+
   <div id="login-msg" class="alert mt-3 d-none" role="alert"></div>
 </form>
 {% endblock %}
 
 {% block scripts %}
+<!-- API Turnstile -->
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+
 <script>
-// Validation Bootstrap
+/* Validation Bootstrap simple */
 (() => {
   'use strict';
   const forms = document.querySelectorAll('.needs-validation');
   Array.from(forms).forEach(form => {
     form.addEventListener('submit', event => {
-      if (!form.checkValidity()) { event.preventDefault(); event.stopPropagation(); }
+      if (!form.checkValidity()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
       form.classList.add('was-validated');
     }, false);
   });
 })();
 
-function showMsg(text, type="info") {
+function showMsg(text, type = "info") {
   const box = document.getElementById('login-msg');
   box.classList.remove('d-none', 'alert-info', 'alert-success', 'alert-danger', 'alert-warning');
   box.classList.add('alert', `alert-${type}`);
   box.textContent = text;
 }
 
+function setCookie(name, value, maxAgeSec) {
+  // Ajoute Secure si HTTPS
+  const isHttps = location.protocol === 'https:';
+  document.cookie =
+    `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAgeSec}; SameSite=Lax${isHttps ? '; Secure' : ''}`;
+}
+
 const form = document.getElementById('login-form');
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!form.checkValidity()) return;
 
+  // Récupération du token Turnstile injecté en input hidden par le widget
+  const tsInput = form.querySelector('input[name="cf-turnstile-response"]');
+  const tsToken = tsInput ? tsInput.value : '';
+  if (!tsToken) {
+    showMsg("Veuillez compléter la vérification anti-robot.", "warning");
+    return;
+  }
+
   showMsg('Connexion…', 'info');
 
-  const formData = new FormData(form);
-  const username = formData.get('username');
-  const password = formData.get('password');
+  const username = (document.getElementById('username').value || '').trim();
+  const password = document.getElementById('password').value || '';
 
   try {
+    // Corps pour OAuth2PasswordRequestForm + token Turnstile
+    const body = new URLSearchParams({
+      username,
+      password,
+      'cf-turnstile-response': tsToken
+    });
+
     const response = await fetch('/auth/web/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ username, password })
+      body
     });
 
     if (!response.ok) {
-      if (response.status === 401) throw new Error("Nom d'utilisateur ou mot de passe incorrect.");
-      throw new Error(`HTTP ${response.status}`);
+      // Reset du challenge côté client en cas d’échec
+      if (window.turnstile) turnstile.reset();
+
+      let detail = `HTTP ${response.status}`;
+      try {
+        const err = await response.json();
+        if (err && err.detail) detail = typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail);
+      } catch (_) {}
+
+      if (response.status === 401) {
+        throw new Error("Nom d'utilisateur ou mot de passe incorrect.");
+      } else if (response.status === 400) {
+        throw new Error(detail || "Vérification anti-robot échouée pour le login.");
+      } else {
+        throw new Error(detail);
+      }
     }
 
     const data = await response.json();
-    const token = data.access_token;
+    const token = data && data.access_token;
     if (!token) throw new Error("Réponse invalide du serveur : access_token manquant.");
 
-    // Stockage côté client pour fetch()
+    // Stockage pour les appels fetch côté client
     localStorage.setItem('ACCESS_TOKEN', token);
 
-    // Cookie lisible par le serveur (compatibilité avec ton middleware)
-    const maxAge = data.expires_at ? Math.max(1, Math.floor(data.expires_at - (Date.now()/1000))) : 86400;
-    document.cookie = `auth_token=${token}; Path=/; Max-Age=${maxAge}; SameSite=Lax`;
-    document.cookie = `ACCESS_TOKEN=${token}; Path=/; Max-Age=${maxAge}; SameSite=Lax`;
+    // Cookies lus par ton middleware / pages (auth_token et ACCESS_TOKEN)
+    const maxAge = data.expires_at ? Math.max(1, Math.floor(data.expires_at - (Date.now() / 1000))) : 86400;
+    setCookie('auth_token', token, maxAge);
+    setCookie('ACCESS_TOKEN', token, maxAge);
 
     showMsg('Connecté ! Redirection…', 'success');
-
-    // Redirection immédiate vers l'accueil, sans utiliser ?next=
+    // Redirection vers l’accueil
     window.location.replace('/');
-
   } catch (err) {
     showMsg(`Erreur : ${err.message}`, 'danger');
   }

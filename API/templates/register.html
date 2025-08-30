@@ -1,58 +1,49 @@
 {% extends "base.html" %}
 {% set ACTIVE = "register" %}
 
-{# ---------------------------------------------------------- #}
-{#  Page : Création de compte utilisateur                       #}
-{#                                                            #}
-{#  Cette page propose un formulaire d'inscription classique.  #}
-{#  Elle envoie une requête POST en JSON vers l'endpoint       #}
-{#  "/users" afin de créer un nouvel utilisateur. En cas      #}
-{#  d'erreur (nom d'utilisateur ou email déjà utilisé), le     #}
-{#  message retourné par l'API est affiché.                    #}
-{# ---------------------------------------------------------- #}
-
 {% block content %}
 <h1 class="mb-4">Créer un compte</h1>
 <form id="register-form" class="needs-validation" novalidate>
   <div class="mb-3">
     <label for="username" class="form-label">Nom d'utilisateur</label>
     <input type="text" id="username" name="username" class="form-control" placeholder="Choisissez un nom d'utilisateur" required minlength="3" maxlength="50">
-    <div class="invalid-feedback">
-      Le nom d'utilisateur doit comporter entre 3 et 50 caractères.
-    </div>
+    <div class="invalid-feedback">Le nom d'utilisateur doit comporter entre 3 et 50 caractères.</div>
   </div>
   <div class="mb-3">
-    <label for="email" class="form-label">Adresse e‑mail</label>
+    <label for="email" class="form-label">Adresse e-mail</label>
     <input type="email" id="email" name="email" class="form-control" placeholder="votre@email.com" required>
-    <div class="invalid-feedback">
-      Veuillez fournir une adresse e‑mail valide.
-    </div>
+    <div class="invalid-feedback">Veuillez fournir une adresse e-mail valide.</div>
   </div>
   <div class="mb-3">
     <label for="password" class="form-label">Mot de passe</label>
     <input type="password" id="password" name="password" class="form-control" placeholder="Choisissez un mot de passe" required minlength="6">
-    <div class="invalid-feedback">
-      Le mot de passe doit comporter au moins 6 caractères.
-    </div>
+    <div class="invalid-feedback">Le mot de passe doit comporter au moins 6 caractères.</div>
   </div>
+
+  <!-- Turnstile widget -->
+  <div class="mb-3">
+    <div class="cf-turnstile"
+         data-sitekey="{{ TURNSTILE_SITEKEY }}"
+         data-theme="auto"
+         data-action="signup"></div>
+    <noscript><div class="text-warning small">Activez JavaScript pour la vérification anti-robot.</div></noscript>
+  </div>
+
   <button type="submit" class="btn btn-success">Créer mon compte</button>
-  <p class="mt-3">Déjà inscrit ? <a href="/login">Se connecter</a></p>
+  <p class="mt-3">Déjà inscrit ? <a href="/login">Se connecter</a></p>
   <p id="register-msg" class="mt-3"></p>
 </form>
 {% endblock %}
 
 {% block scripts %}
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script>
-// Validation Bootstrap
 (() => {
   'use strict';
   const forms = document.querySelectorAll('.needs-validation');
   Array.from(forms).forEach(form => {
     form.addEventListener('submit', event => {
-      if (!form.checkValidity()) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
+      if (!form.checkValidity()) { event.preventDefault(); event.stopPropagation(); }
       form.classList.add('was-validated');
     }, false);
   });
@@ -60,39 +51,44 @@
 
 const form = document.getElementById('register-form');
 const msg  = document.getElementById('register-msg');
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!form.checkValidity()) return;
+
+  const tsInput = form.querySelector('input[name="cf-turnstile-response"]');
+  const tsToken = tsInput ? tsInput.value : '';
+  if (!tsToken) { msg.textContent = 'Veuillez compléter la vérification anti-robot.'; return; }
+
   msg.textContent = 'Création du compte…';
-  const formData = new FormData(form);
+
+  const fd = new FormData(form);
   const payload = {
-    username: formData.get('username'),
-    email: formData.get('email'),
-    password: formData.get('password')
+    username: fd.get('username'),
+    email: fd.get('email'),
+    password: fd.get('password'),
+    // 🔁 même nom qu’au login :
+    'cf-turnstile-response': tsToken
   };
+
   try {
     const response = await fetch('/users', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
+
     if (!response.ok) {
+      if (window.turnstile) turnstile.reset();
       let detail = 'HTTP ' + response.status;
-      try {
-        const errData = await response.json();
-        detail = errData.detail || detail;
-      } catch (e) { /* ignore JSON parse errors */ }
+      try { const errData = await response.json(); detail = errData.detail || detail; } catch {}
       throw new Error(detail);
     }
-    msg.textContent = 'Compte créé avec succès ! Vous allez être redirigé vers la connexion…';
-    // Rediriger vers la connexion après quelques secondes
-    setTimeout(() => {
-      window.location.href = '/login';
-    }, 1500);
+
+    msg.textContent = 'Compte créé avec succès ! Redirection…';
+    setTimeout(() => { window.location.href = '/login'; }, 1500);
   } catch (err) {
-    msg.textContent = 'Erreur : ' + err.message;
+    msg.textContent = 'Erreur : ' + err.message;
   }
 });
 </script>
