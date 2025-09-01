@@ -28,6 +28,11 @@ from fastapi import Form, Request, HTTPException, Depends
 from pydantic import ValidationError
 import re, asyncio
 from API.security.turnstile import verify_turnstile
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from fastapi.responses import PlainTextResponse
+import redis.asyncio as redis
 
 MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI") 
 MLFLOW_EXP = os.getenv("MLFLOW_EXPERIMENT", "reco-inference")
@@ -84,13 +89,20 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+def client_ip(request):
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host
 
+limiter = Limiter(key_func=client_ip,storage_uri=REDIS_URL,strategy="moving-window", default_limits=["60/minute"])
+app.state.limiter = limiter
 instrumentator = Instrumentator(should_group_status_codes=True,should_ignore_untemplated=True)
-instrumentator.add(metrics.latency(buckets=(0.005, 0.01, 0.025, 0.05, 0.1,0.25, 0.5, 0.75, 1, 2, 3, 5, 7.5, 10)))
 instrumentator.instrument(app).expose(app, endpoint="/metrics", tags=["metrics"])
 
 API_STATIC_KEY = os.getenv("API_STATIC_KEY", "coall")
 api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
+
 
 BASE_DIR = Path(__file__).resolve().parent  
 STATIC_DIR = BASE_DIR / "static"                
@@ -105,10 +117,13 @@ models.ensure_ml_schema(engine)
 models._attach_external_tables(engine)
 models.Base.metadata.create_all(bind=engine)
 
-redis = Redis.from_url(REDIS_URL, decode_responses=True)
+app.state.redis = Redis.from_url(REDIS_URL, decode_responses=True)
 Z_UNIQUE = "signup:ip_last_seen" 
 H_BUCKET = "signup:b:"           
 
+@app.exception_handler(RateLimitExceeded)
+def ratelimit_handler(request: Request, exc):
+    return PlainTextResponse("Too Many Requests", status_code=429)
 
 def _client_ip(req: Request) -> str:
     xff = req.headers.get("x-forwarded-for")
@@ -125,6 +140,25 @@ async def _incr_ip_bucket(ip: str, now: int):
     hkey = f"{H_BUCKET}{b}"
     await redis.hincrby(hkey, ip, 1)
     await redis.expire(hkey, WINDOW_SEC + BUCKET_SEC + 5)
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    # Ferme proprement
+    r = getattr(app.state, "redis", None)
+    if r:
+        await r.aclose()
+
+@app.middleware("http")
+async def block_banned_ip(request: Request, call_next):
+    ip = request.client.host if request.client else ""
+    r = getattr(request.app.state, "redis", None)
+    try:
+        if r and ip and await r.sismember("banned_ips", ip):
+            return JSONResponse(status_code=403, content={"detail": "banned"})
+    except Exception:
+        pass
+    return await call_next(request)
 
 @app.middleware("http")
 async def _track_signup(request: Request, call_next):
@@ -427,6 +461,7 @@ def submit_feedback(payload: schema.FeedbackIn,sub: str = Depends(CRUD.get_curre
 
     return schema.FeedbackOut()
 
+@limiter.limit("15/minute; 2/10second")
 @app.post("/auth/web/token", response_model=schema.TokenOut, tags=["Auth"])
 async def login_for_web_access_token(request: Request,db: Session = Depends(get_db),form_data: OAuth2PasswordRequestForm = Depends(),
                                      cf_token: str = Form(alias="cf-turnstile-response", default="")):
@@ -449,10 +484,9 @@ async def login_for_web_access_token(request: Request,db: Session = Depends(get_
     return schema.TokenOut(access_token=token, expires_at=exp_ts)
 
 
-
+@limiter.limit("15/minute; 2/10second")
 @app.post("/users", response_model=schema.UserOut, tags=["Auth"])
 async def register_user(request: Request, db: Session = Depends(get_db)):
-    # Lire le JSON UNE SEULE FOIS
     try:
         data = await request.json()
     except Exception:
@@ -468,7 +502,6 @@ async def register_user(request: Request, db: Session = Depends(get_db)):
     if not ok and BYPASS==0:
         raise HTTPException(400, "CAPTCHA failed")
 
-    # Valider/mapper le reste du JSON sur TON schéma existant
     try:
         user_in = schema.UserCreate(**data)
     except ValidationError as e:

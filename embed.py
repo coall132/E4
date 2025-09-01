@@ -4,6 +4,7 @@ import re
 import time
 import math
 from typing import List, Optional, Tuple
+from sentence_transformers import SentenceTransformer
 
 import numpy as np
 import psycopg2
@@ -136,7 +137,7 @@ def fetch_reviews(conn, id_etab: int, limit: int) -> List[str]:
     return texts
 def encode_texts(model, texts: List[str]) -> List[np.ndarray]:
     if not texts:
-        return []
+        emb = model.encode("", normalize_embeddings=True, show_progress_bar=False, device=EMBED_DEVICE)
     emb = model.encode(texts, normalize_embeddings=True, show_progress_bar=False, device=EMBED_DEVICE)
     arr = np.asarray(emb, dtype=np.float32)
     if arr.ndim == 1:
@@ -192,8 +193,6 @@ def main():
     ensure_table(conn)
     assert_etab_columns(conn)
 
-    # 2) Modèle embeddings
-    from sentence_transformers import SentenceTransformer
     log(f"Loading model {EMBED_MODEL_NAME} on {EMBED_DEVICE}")
     st = SentenceTransformer(EMBED_MODEL_NAME, device=EMBED_DEVICE)
 

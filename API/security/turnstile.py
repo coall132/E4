@@ -3,7 +3,7 @@ from typing import Tuple, Dict, Any
 
 CF_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 CF_SECRET     = os.getenv("TURNSTILE_SECRET", "")
-BYPASS        = os.getenv("TURNSTILE_DEV_BYPASS", "1") == "1"  # pour dev/local
+BYPASS        = os.getenv("TURNSTILE_DEV_BYPASS", "0") == "1"  # pour dev/local
 TIMEOUT       = httpx.Timeout(connect=10.0, read=10.0, write=10.0, pool=10.0)
 
 logger = logging.getLogger("turnstile")

@@ -1,31 +1,39 @@
 services:
   api:
-    build:
-      context: .
-      dockerfile: ./API/Dockerfile
-      target: prod
-    container_name: api_ia
-    ports:
-      - "8001:8000"
-    environment:
-      TURNSTILE_SITEKEY: ${TURNSTILE_SITEKEY}
-      TURNSTILE_SECRET: ${TURNSTILE_SECRET}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      MLFLOW_TRACKING_URI: http://mlflow:5000
-      MLFLOW_EXPERIMENT: restaurant-api
-      PROMETHEUS_MULTIPROC_DIR: /tmp
-      REDIS_URL: redis://redis:6379/0
-      SIGNUP_UNIQUE_IPS_WINDOW_SEC: "300"     
-      SIGNUP_PATH_REGEX: "^/(users|register)$"
-      METRICS_LEADER: "1"   
-    depends_on:
-      - redis                 
-    networks:
-      - data_network
+      build:
+        context: .
+        dockerfile: ./API/Dockerfile
+        target: prod
+      container_name: api_ia
+      ports:
+        - "8001:8000"
+      environment:
+        TURNSTILE_SITEKEY: ${TURNSTILE_SITEKEY}
+        TURNSTILE_SECRET: ${TURNSTILE_SECRET}
+        POSTGRES_USER: ${POSTGRES_USER}
+        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+        POSTGRES_DB: ${POSTGRES_DB}
+        POSTGRES_HOST: postgres
+        POSTGRES_PORT: 5432
+        MLFLOW_TRACKING_URI: http://mlflow:5000
+        MLFLOW_EXPERIMENT: restaurant-api
+        PROMETHEUS_MULTIPROC_DIR: /tmp
+        REDIS_URL: redis://redis:6379/0
+        SIGNUP_UNIQUE_IPS_WINDOW_SEC: "300"
+        SIGNUP_PATH_REGEX: "^/(users|register)$"
+        METRICS_LEADER: "1"
+      volumes:
+        - ./logs:/logs
+      command: ["sh","-lc",
+        "uvicorn API.main:app \
+        --host 0.0.0.0 --port 8000 \
+        --proxy-headers --forwarded-allow-ips='*' \
+        --access-log 2>&1 | tee -a /logs/api/access.log"
+        ]
+      depends_on:
+        - redis
+      networks:
+        - data_network
 
   # Crée le bucket s’il n’existe pas
   minio-init:
@@ -137,7 +145,23 @@ services:
     command: ["redis-server","--save","","--appendonly","no"]
     restart: unless-stopped
     networks: [data_network]
-      
+
+  fail2ban:
+    build:
+      context: ./fail2ban
+      dockerfile: fail2ban.Dockerfile
+    depends_on:
+      - redis
+    environment:
+      - TZ=Europe/Paris
+      - F2B_LOG_TARGET=STDOUT
+      - F2B_DB_PURGE_AGE=7d
+    networks: [data_network]
+    volumes:
+      - ./logs:/logs:ro
+    restart: unless-stopped
+    
 networks:
   data_network:
     external: true
+

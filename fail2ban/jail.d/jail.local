@@ -1,0 +1,31 @@
+[DEFAULT]
+# IPs à ne jamais bannir (à ajuster selon Docker Desktop)
+ignoreip = 192.168.65.0/24 172.20.0.5 172.20.0.6
+bantime  = 3600
+findtime = 600
+maxretry = 8
+
+backend = auto
+# journal Fail2ban
+logtarget = /data/fail2ban.log
+
+# ——— Jails ———
+
+[api-auth]
+enabled  = true
+filter   = api-auth
+logpath  = /logs/api/access.log
+maxretry = 20
+findtime = 600
+bantime  = 3600
+banaction = redis-ban
+
+[api-register]
+enabled  = true
+filter   = api-register
+logpath  = /logs/api/access.log
+maxretry = 10
+findtime = 900
+bantime  = 7200
+banaction = redis-ban
+
