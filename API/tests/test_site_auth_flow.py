@@ -23,7 +23,7 @@ def test_register_and_web_login_and_access(client):
         data={"username": payload["username"], "password": payload["password"]},
     )
     assert r2.status_code == 200
-    assert r2.json().get("status") is True
+    assert r2.json().get("access_token") is True
     assert "auth_token=" in r2.headers.get("set-cookie", "")
 
     # 3) Accès UI protégée
