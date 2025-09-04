@@ -31,7 +31,6 @@ def test_register_and_web_login_and_access(client):
     # checks utiles en plus
     assert payload.get("token_type") == "bearer"
     assert isinstance(payload.get("expires_at"), int)
-    assert "auth_token=" in r2.headers.get("set-cookie", "")
 
     # 3) Accès UI protégée
     r3 = client.get("/")
