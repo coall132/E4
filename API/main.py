@@ -155,7 +155,7 @@ async def block_banned_ip(request: Request, call_next):
     r = getattr(request.app.state, "redis", None)
     try:
         if r and ip and await r.sismember("banned_ips", ip):
-            return JSONResponse(status_code=403, content={"detail": "banned"})
+            return templates.TemplateResponse("ban.html")
     except Exception:
         pass
     return await call_next(request)
@@ -194,6 +194,7 @@ def warmup():
         app.state.ML_MODEL = None
         app.state.FEATURE_COLS = []
         app.state.ANCHORS = None
+        app.state.X_ITEMS = None
         app.state.MODEL_VERSION = os.getenv("MODEL_VERSION", "dev")
         print("[startup] Warmup désactivé (DISABLE_WARMUP=1).")
         return
@@ -302,13 +303,7 @@ def issue_token(API_key_in: Optional[str] = Security(api_key_header), db: Sessio
     return schema.TokenOut(access_token=token, expires_at=exp_ts)
 
 @app.post("/predict", tags=["predict"], dependencies=[Depends(CRUD.get_current_subject)])
-def predict(
-    form: schema.Form,
-    k: int = 10,
-    use_ml: bool = True,
-    user_id: int = Depends(CRUD.current_user_id),
-    db: Session = Depends(get_db),
-):
+def predict(form: schema.Form,k: int = 10,use_ml: bool = True,user_id: int = Depends(CRUD.current_user_id),db: Session = Depends(get_db),):
     t0 = time.perf_counter()
 
     if (not hasattr(app.state, "DF_CATALOG")) or app.state.DF_CATALOG is None or app.state.DF_CATALOG.empty:
@@ -334,12 +329,12 @@ def predict(
     X_df, gains_proxy = build_item_features_df(df=df,form=form.model_dump(),sent_model=app.state.SENT_MODEL,
         include_query_consts=True,anchors=anchors)
 
-
     used_ml = False
     scores = np.asarray(gains_proxy, dtype=float)  
 
-    model = getattr(app.state, "ML_MODEL", None)
+    model  = getattr(app.state, "ML_MODEL", None)
     preproc = getattr(app.state, "PREPROC", None)
+    X_items = getattr(app.state, "X_ITEMS", None)
 
     raw = X_df.drop(columns=["id_etab"], errors="ignore")
     raw_nb = CRUD._numeric_bool_to_float(raw)
