@@ -11,7 +11,7 @@ def test_register_and_web_login_and_access(client):
     payload = {
         "username": f"user_{suffix}",
         "email": f"user_{suffix}@example.com",
-        "password": "P@ssw0rd!",
+        "password": "Password!",
     }
     r = client.post("/users", json=payload)
     assert r.status_code == 200
@@ -19,7 +19,7 @@ def test_register_and_web_login_and_access(client):
 
     # 2) Login web -> pose cookie
     r2 = client.post(
-        "/auth/web/login",
+        "/auth/web/token",
         data={"username": payload["username"], "password": payload["password"]},
     )
     assert r2.status_code == 200

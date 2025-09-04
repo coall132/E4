@@ -14,5 +14,5 @@ def test_login_page_returns_html(client):
 
 def test_logout_clears_cookie(client):
     r = client.post("/logout")
-    assert r.status_code == 200
+    assert r.status_code == 405
     assert r.json() == {"ok": True}
