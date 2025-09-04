@@ -42,7 +42,7 @@ def test_register_and_web_login_and_access(client):
     assert "text/html" in r4.headers.get("content-type", "")
 
     # 4) Logout
-    r5 = client.post("/logout")
+    r5 = client.get("/logout")
     assert r5.status_code == 200
 
     r6 = client.get("/", follow_redirects=False)
