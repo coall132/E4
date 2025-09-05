@@ -37,7 +37,7 @@ jobs:
       - name: Run tests
         env:
           DISABLE_WARMUP: "1"
-          API_STATIC_KEY: "coall"
+          API_STATIC_KEY: ${{ secrets.API_STATIC_KEY }}
           PYTHONPATH: ${{ github.workspace }} 
         run: pytest -q
 
