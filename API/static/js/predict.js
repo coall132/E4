@@ -41,16 +41,15 @@ function renderResults(data) {
   cont.innerHTML = items.map(it => {
     const nom = it.details?.nom || `Restaurant ${it.etab_id}`;
     const adresse = it.details?.adresse || "";
-    const score = typeof it.score === "number" ? `<span class="badge bg-primary">Score ${it.score.toFixed(3)}</span><br>` : "";
     const note = typeof it.details?.rating === "number" ? `<span class="small text-muted">Note ${it.details.rating.toFixed(1)}/5</span>` : "";
     return `
       <div class="card mb-2 bg-dark text-white border-secondary result-item" data-etab-id="${it.etab_id}" style="cursor:pointer;">
         <div class="card-body d-flex justify-content-between">
           <div class="pe-3">
-            <h6 class="card-title mb-1">#${it.rank} – ${nom}</h6>
+            <h6 class="card-title mb-1"># – ${nom}</h6>
             <p class="card-text small text-muted mb-0">${adresse}</p>
           </div>
-          <div class="text-end">${score}${note}</div>
+          <div class="text-end">${note}</div>
         </div>
       </div>`;
   }).join("");
@@ -127,28 +126,33 @@ async function openDetail(etabId) {
 // ===== Soumission prédiction =====
 $("#predict-form")?.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const cp   = $("#cp").value.trim();
+  const cp   = $("#cp").value.trim() || "37000";
   const desc = $("#desc").value.trim();
-  const pRaw = $("#price").value;
+  const pRaw = $("#price").value || "2";
   const k    = parseInt($("#k").value, 10) || 10;
   const openKey = datetimeToOpenKey($("#datetime").value);
-  const opts = [...$("#opts").selectedOptions].map(o => o.value);
+  const opts = [...($("#opts")?.selectedOptions ?? [])].map(o => o.value);
 
-  // IMPORTANT : description & open doivent exister pour éviter 422
-  const payload = { description: desc || "", open: openKey || "" };
+
+  const payload = {
+    description: desc || "",
+    open: openKey || "",
+    options: opts,           
+  };
   if (pRaw !== "") {
-    const p = parseInt(pRaw, 10); if (!Number.isNaN(p)) payload.price_level = p;
+    const p = parseInt(pRaw, 10);
+    if (!Number.isNaN(p)) payload.price_level = p;
   }
-  if (cp)          payload.city = cp;
-  if (opts.length) payload.options = opts;
+  if (cp) payload.city = cp;
 
   const cont = $("#predict-result");
   cont.innerHTML = `<div class="alert alert-secondary">Calcul en cours…</div>`;
 
   try {
     const r = await authFetch(`/predict?k=${encodeURIComponent(k)}&use_ml=true`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
     if (!r.ok) {
       let detail = ""; try { detail = (await r.json()).detail ?? ""; } catch {}

@@ -23,12 +23,14 @@ try:
     from . import benchmark_2_0 as bm
     from . import utils
     from .main import app
+    from . import features as fx
 except:
     from API import models
     from API import database as db
     from API import schema
     from API import benchmark_2_0 as bm
     from API import utils
+    from API import features as fx
 
 api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)  # pour /auth/token uniquement
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
@@ -103,14 +105,21 @@ def current_user_id(subject: str = Depends(get_current_subject)) -> int:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sujet JWT invalide")
     
 def load_ML():
+    base = os.getenv("ARTIFACTS_DIR", "artifacts2")
+    preproc_path = Path(os.getenv("PREPROC_PATH", f"{base}/preproc_items.joblib"))
+
     state = schema.MLState()
-    state.preproc_factory = bm.make_preproc_final
+    if preproc_path.exists():
+        state.preproc = joblib.load(preproc_path)
+        print(f"[ml] Preproc chargé: {preproc_path}")
+    else:
+        print(f"[ml] Preproc introuvable: {preproc_path}")
     state.sent_model = getattr(bm, "model", None)
 
     if not (state.preproc or state.preproc_factory):
             raise RuntimeError("Aucun préprocesseur trouvé dans benchmark_3 (preproc ou build_preproc).")
     
-    path = os.getenv("RANK_MODEL_PATH", None)
+    path = os.getenv("RANK_MODEL_PATH", "artifacts2")
     state.rank_model_path = path
     skip_rank = os.getenv("SKIP_RANK_MODEL", "0") == "1"
     if not skip_rank and Path(path).exists():

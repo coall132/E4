@@ -9,7 +9,6 @@ TIMEOUT       = httpx.Timeout(connect=10.0, read=10.0, write=10.0, pool=10.0)
 logger = logging.getLogger("turnstile")
 
 async def verify_turnstile(token: str | None, remoteip: str | None = None) -> Tuple[bool, Dict[str, Any]]:
-    # Mode dev/bypass (ex: pas d'Internet en local)
     if BYPASS:
         logger.warning("[turnstile] BYPASS=ON -> validation forcée côté serveur (dev only)")
         return True, {"bypass": True}

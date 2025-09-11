@@ -9,16 +9,15 @@
   <form id="predict-form" class="row g-3">
     <!-- Code postal facultatif -->
     <div class="col-6 col-md-4">
-      <label for="cp" class="form-label">Code postal (facultatif)</label>
-      <input type="text" id="cp" class="form-control" placeholder="Ex : 37000">
+      <label for="cp" class="form-label">Code postal </label>
+      <input type="text" id="cp" class="form-control" placeholder="Ex : 37000" value="37000">
     </div>
     <!-- Niveau de prix facultatif -->
     <div class="col-6 col-md-4">
-      <label for="price" class="form-label">Niveau de prix (facultatif)</label>
+      <label for="price" class="form-label">Niveau de prix </label>
       <select id="price" class="form-select">
-        <option value="">— Aucun —</option>
         <option value="1">€</option>
-        <option value="2">€€</option>
+        <option value="2" selected>€€</option>
         <option value="3">€€€</option>
         <option value="4">€€€€</option>
       </select>

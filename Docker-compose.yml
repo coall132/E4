@@ -4,9 +4,9 @@ services:
         context: .
         dockerfile: ./API/Dockerfile
         target: prod
-      container_name: api_ia
+      container_name: api_ia2
       ports:
-        - "8001:8000"
+        - "8002:8000"
       environment:
         TURNSTILE_SITEKEY: ${TURNSTILE_SITEKEY}
         TURNSTILE_SECRET: ${TURNSTILE_SECRET}
@@ -50,7 +50,7 @@ services:
 
   mlflow:
     image: python:3.11-slim
-    container_name: mlflow
+    container_name: mlflow2
     environment:
       # --- tracking store (Postgres)
       POSTGRES_USER: ${POSTGRES_USER}
@@ -87,7 +87,7 @@ services:
         exec gunicorn --bind 0.0.0.0:5000 --workers 4 mlflow.server:app
       "
     ports:
-      - "5001:5000"
+      - "5002:5000"
     healthcheck:
       test:
         - CMD
