@@ -91,7 +91,7 @@ def test_predict(client, db_session, monkeypatch):
         "price_level": 2,
         "code_postal": "37000",
         "open": "ouvert_samedi_soir",
-        "options": "servesVegetarianFood,outdoorSeating",
+        "options": ["servesVegetarianFood","outdoorSeating"],
         "description": "italien calme terrasse",
     }
     r = client.post("/predict",
