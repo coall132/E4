@@ -137,13 +137,13 @@ $("#predict-form")?.addEventListener("submit", async (e) => {
   const payload = {
     description: desc || "",
     open: openKey || "",
-    options: opts || [],           
+    options: opts ,           
   };
   if (pRaw !== "") {
     const p = parseInt(pRaw, 10);
-    if (!Number.isNaN(p)) payload.price_level = p || "2";
+    if (!Number.isNaN(p)) payload.price_level = p;
   }
-  if (cp) payload.city = cp || "37000";
+  if (cp) payload.city = cp ;
 
   const cont = $("#predict-result");
   cont.innerHTML = `<div class="alert alert-secondary">Calcul en cours…</div>`;
