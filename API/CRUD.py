@@ -23,21 +23,19 @@ try:
     from . import benchmark_2_0 as bm
     from . import utils
     from .main import app
-    from . import features as fx
 except:
     from API import models
     from API import database as db
     from API import schema
     from API import benchmark_2_0 as bm
     from API import utils
-    from API import features as fx
 
 api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)  # pour /auth/token uniquement
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 ph = PasswordHasher(time_cost=2, memory_cost=102400, parallelism=8)
 
-API_STATIC_KEY = os.getenv("API_STATIC_KEY", "coall")  # pour échanger contre un token
-JWT_SECRET = os.getenv("JWT_SECRET", "coall")
+API_STATIC_KEY = os.getenv("API_STATIC_KEY")  # pour échanger contre un token
+JWT_SECRET = os.getenv("JWT_SECRET")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
 _MLFLOW_READY = False
@@ -105,21 +103,14 @@ def current_user_id(subject: str = Depends(get_current_subject)) -> int:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sujet JWT invalide")
     
 def load_ML():
-    base = os.getenv("ARTIFACTS_DIR", "artifacts2")
-    preproc_path = Path(os.getenv("PREPROC_PATH", f"{base}/preproc_items.joblib"))
-
     state = schema.MLState()
-    if preproc_path.exists():
-        state.preproc = joblib.load(preproc_path)
-        print(f"[ml] Preproc chargé: {preproc_path}")
-    else:
-        print(f"[ml] Preproc introuvable: {preproc_path}")
+    state.preproc_factory = bm.make_preproc_final
     state.sent_model = getattr(bm, "model", None)
 
     if not (state.preproc or state.preproc_factory):
             raise RuntimeError("Aucun préprocesseur trouvé dans benchmark_3 (preproc ou build_preproc).")
     
-    path = os.getenv("RANK_MODEL_PATH", "artifacts2")
+    path = os.getenv("RANK_MODEL_PATH", None)
     state.rank_model_path = path
     skip_rank = os.getenv("SKIP_RANK_MODEL", "0") == "1"
     if not skip_rank and Path(path).exists():
@@ -204,24 +195,27 @@ def _ensure_mlflow():
     if _MLFLOW_READY and _MLFLOW_EXP_ID:
         return True
 
-    uri = os.getenv("MLFLOW_TRACKING_URI") or "http://mlflow:5000"
+    uri = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow:5000")
     exp_name = os.getenv("MLFLOW_EXPERIMENT", "restaurant-api")
     try:
         mlflow.set_tracking_uri(uri)
         client = MlflowClient(tracking_uri=uri)
-        exp = client.get_experiment_by_name(exp_name)
-        if exp is None:
-            exp_id = client.create_experiment(exp_name)
-        else:
-            exp_id = exp.experiment_id
 
-        # Très important : fixe l'expérience par défaut du process
-        mlflow.set_experiment(exp_name)
+        # sonde explicite: force une requête réseau
+        client.search_experiments(max_results=1)
+
+        exp = client.get_experiment_by_name(exp_name)
+        exp_id = exp.experiment_id if exp else client.create_experiment(exp_name)
+
+        mlflow.set_experiment(exp_name)  # fixe l’expé par défaut
 
         _MLFLOW_EXP_ID = exp_id
         _MLFLOW_READY = True
+        print(f"[mlflow] READY uri={uri} exp_id={exp_id}")
         return True
-    except Exception:
+
+    except Exception as e:
+        print(f"[mlflow] init FAILED (uri={uri}): {e}")
         return False
     
 def log_prediction_event(prediction, form_dict, scores, used_ml: bool, latency_ms: int, model_version: str|None):

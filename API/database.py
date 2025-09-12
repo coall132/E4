@@ -44,4 +44,6 @@ def extract_table(engine: Engine,table_name: str, schema: str = "public"):
     except Exception as e:
         print(f"[bdd.extract] Erreur lecture {schema}.{table_name}: {e}")
         return pd.DataFrame()
+
+
     

@@ -51,7 +51,6 @@ try :
     from . import models
     from . import schema
     from .database import engine, get_db, SessionLocal
-    from . import features as fx
     from .benchmark_2_0 import (
     score_func,
     build_item_features_df,
@@ -68,7 +67,6 @@ except :
     from API import models
     from API import schema
     from API.database import engine, get_db, SessionLocal
-    from API import features as fx
     import API.benchmark_2_0 as bm
     score_func = bm.score_func
     build_item_features_df = bm.build_item_features_df
@@ -102,7 +100,7 @@ app.state.limiter = limiter
 instrumentator = Instrumentator(should_group_status_codes=True,should_ignore_untemplated=True)
 instrumentator.instrument(app).expose(app, endpoint="/metrics", tags=["metrics"])
 
-API_STATIC_KEY = os.getenv("API_STATIC_KEY", "coall")
+API_STATIC_KEY = os.getenv("API_STATIC_KEY")
 api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
 
 
@@ -115,9 +113,23 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 app.mount("/strategy", StaticFiles(directory=str(PASSION_DIR)), name="strategy")
 
 
-models.ensure_ml_schema(engine)
-models._attach_external_tables(engine)
-models.Base.metadata.create_all(bind=engine)
+
+def safe_db_bootstrap(engine):
+    if os.getenv("DISABLE_DB_INIT", "0") == "1":
+        print("[startup] DB init disabled (DISABLE_DB_INIT=1)")
+        return
+
+    dialect = engine.dialect.name
+    if dialect in ("postgresql", "postgres"):
+        models.ensure_ml_schema(engine)
+        if getattr(models, "_attach_external_tables", None):
+            try:
+                models._attach_external_tables(engine)
+            except Exception as e:
+                print(f"[startup] _attach_external_tables skipped: {e}")
+        models.Base.metadata.create_all(bind=engine, checkfirst=True)
+    else:
+        models.Base.metadata.create_all(bind=engine, checkfirst=True)
 
 app.state.redis = Redis.from_url(REDIS_URL, decode_responses=True)
 Z_UNIQUE = "signup:ip_last_seen" 
@@ -188,6 +200,7 @@ async def check_auth_cookie(request: Request, call_next):
 
 @app.on_event("startup")
 def warmup():
+    safe_db_bootstrap(engine)
     if os.getenv("DISABLE_WARMUP", "0") == "1":
         app.state.DF_CATALOG = pd.DataFrame()
         app.state.SENT_MODEL = utils._StubSentModel()
@@ -304,20 +317,13 @@ def issue_token(API_key_in: Optional[str] = Security(api_key_header), db: Sessio
     return schema.TokenOut(access_token=token, expires_at=exp_ts)
 
 @app.post("/predict", tags=["predict"], dependencies=[Depends(CRUD.get_current_subject)])
-def predict(
-    form: schema.Form,
-    k: int = 10,
-    use_ml: bool = True,
-    user_id: int = Depends(CRUD.current_user_id),
-    db: Session = Depends(get_db),
-):
+def predict(form: schema.Form,k: int = 10,use_ml: bool = True,user_id: int = Depends(CRUD.current_user_id),db: Session = Depends(get_db),):
     t0 = time.perf_counter()
 
     if (not hasattr(app.state, "DF_CATALOG")) or app.state.DF_CATALOG is None or app.state.DF_CATALOG.empty:
         raise HTTPException(500, "Catalogue vide/non chargé.")
     df = app.state.DF_CATALOG
 
-    # ---- persistence du formulaire (inchangé)
     try:
         form_row = models.FormDB(
             price_level=getattr(form, "price_level", None),
@@ -333,51 +339,54 @@ def predict(
         db.rollback()
         raise HTTPException(500, f"Insertion du formulaire impossible: {e}")
 
-    # ---- features proxy (fallback conservé)
     anchors = getattr(app.state, "ANCHORS", None)
-    X_df, gains_proxy = build_item_features_df(
-        df=df,
-        form=form.model_dump(),
-        sent_model=getattr(app.state, "SENT_MODEL", None),
-        include_query_consts=True,
-        anchors=anchors
-    )
+    X_df, gains_proxy = build_item_features_df(df=df,form=form.model_dump(),sent_model=app.state.SENT_MODEL,
+        include_query_consts=True,anchors=anchors)
 
     used_ml = False
-    scores = np.asarray(gains_proxy, dtype=float)
+    scores = np.asarray(gains_proxy, dtype=float)  
 
-    # ==== CHEMIN E3 : même préproc/items/features/modèle que E3 ====
-    model   = getattr(app.state, "ML_MODEL", None)     # LightGBM E3
-    preproc = getattr(app.state, "PREPROC", None)      # preproc_items.joblib (E3)
-    X_items = getattr(app.state, "X_ITEMS", None)      # preproc.transform(df) (dense np.float32)
-    sent    = getattr(app.state, "SENT_MODEL", None)   # encodeur de phrases (E3)
+    model  = getattr(app.state, "ML_MODEL", None)
+    preproc = getattr(app.state, "PREPROC", None)
+    X_items = getattr(app.state, "X_ITEMS", None)
 
-    DIFF_SCALE     = getattr(app.state, "DIFF_SCALE", 1.0)
-    PROXY_K_INFER  = getattr(app.state, "PROXY_K_INFER", 3)
+    raw = X_df.drop(columns=["id_etab"], errors="ignore")
+    raw_nb = CRUD._numeric_bool_to_float(raw)
 
-    if use_ml and (model is not None) and (preproc is not None) and (X_items is not None):
+    if use_ml and model is not None:
         try:
-            # 1) Form -> même espace que les items via le PREPROC E3
-            #    (form_to_row doit être le même helper que celui d’E3)
-            Zf_sp = preproc.transform(fx.form_to_row(form.model_dump(), df))
-            Zf = Zf_sp.toarray()[0] if hasattr(Zf_sp, "toarray") else np.asarray(Zf_sp)[0]
-            Zf = Zf.astype(np.float32, copy=False)
+            if CRUD._is_sklearn_pipeline(model):
+                X_in = raw_nb
 
-            # 2) Features texte E3 (cos sécurisée + [0,1])
-            T_feat = fx.text_features01(df, form.model_dump(), sent, k=PROXY_K_INFER)
+                n_exp = getattr(model, "n_features_in_", None)
+                if n_exp is not None and X_in.shape[1] != n_exp:
+                    if X_in.shape[1] > n_exp:
+                        X_in = X_in.iloc[:, :n_exp]
+                    else:
+                        pad = np.zeros((X_in.shape[0], n_exp - X_in.shape[1]), dtype=float)
+                        X_in = np.hstack([X_in.to_numpy(dtype=float), pad])
 
-            # 3) Concat pairwise (|X_items - Zf| * diff_scale) + 2 colonnes texte
-            Xq = fx.pair_features(Zf, X_items, T_feat, diff_scale=DIFF_SCALE)
+                scores = utils._predict_scores(model, X_in)
+                used_ml = True
 
-            # 4) Prédiction
-            scores = utils._predict_scores(model, Xq)
-            used_ml = True
+            else:
+                feat_cols_train = getattr(app.state, "FEATURE_COLS_TRAIN", None) \
+                                  or getattr(app.state, "FEATURE_COLS", None)
+                X_align = utils._align_df_to_cols(raw_nb, feat_cols_train) if feat_cols_train else raw_nb
+
+                if preproc is not None:
+                    X_sp = preproc.transform(X_align)
+                    X_in = X_sp.toarray().astype(np.float32) if hasattr(X_sp, "toarray") else np.asarray(X_sp, dtype=np.float32)
+                    scores = utils._predict_scores(model, X_in)
+                    used_ml = True
+                else:
+                    used_ml = False
 
         except Exception as e:
-            print(f"[predict] chemin ML E3 en échec, fallback proxy: {e}")
+            print(f"[predict] chemin ML en échec, fallback proxy: {e}")
             used_ml = False
 
-    # ---- top-k + enregistrement 
+
     k = int(max(1, min(k or 10, 50)))
     order = np.argsort(scores)[::-1]
     sel = order[:k]
@@ -385,20 +394,17 @@ def predict(
     latency_ms = int((time.perf_counter() - t0) * 1000)
     model_version = os.getenv("MODEL_VERSION") or getattr(app.state, "MODEL_VERSION", None) or "dev"
 
-    pred_row = models.Prediction(
-        form_id=form_id,
-        k=k,
-        model_version=model_version,
-        latency_ms=str(latency_ms),
-        status="ok",
-    )
+    pred_row = models.Prediction(form_id=form_id,k=k,model_version=model_version,latency_ms=str(latency_ms),status="ok",
+                                 )
     if hasattr(models.Prediction, "user_id"):
         setattr(pred_row, "user_id", user_id)
 
     pred_row.items = []
     for r, i in enumerate(sel, start=1):
         etab_id = int(df.iloc[i]["id_etab"]) if "id_etab" in df.columns else int(i)
-        pred_row.items.append(models.PredictionItem(rank=r, etab_id=etab_id, score=float(scores[i])))
+        pred_row.items.append(
+            models.PredictionItem(rank=r, etab_id=etab_id, score=float(scores[i])),
+        )
 
     try:
         db.add(pred_row)
@@ -408,7 +414,6 @@ def predict(
         db.rollback()
         raise HTTPException(500, f"Insertion de la prédiction impossible: {e}")
 
-    # ---- logging 
     try:
         pyd_pred = schema.Prediction.model_validate(pred_row)
         CRUD.log_prediction_event(
@@ -422,19 +427,13 @@ def predict(
     except Exception as e:
         print(f"[mlflow] log_prediction_event failed: {e}")
 
-    # ---- enrichissement (robuste quand Etab n’existe pas en test)
     base = schema.Prediction.model_validate(pred_row).model_dump()
     pred_id = str(pred_row.id)
     base.setdefault("id", pred_id)
     base["prediction_id"] = pred_id
 
     ids = [int(it["etab_id"]) for it in base.get("items", [])]
-    try:
-        details_map = CRUD.get_etablissements_details_bulk(db, ids)
-    except Exception as e:
-        # Evite le 500 si le modèle SQL "Etab" n’est pas présent (tests)
-        print(f"[predict] details fetch skipped: {e}")
-        details_map = {i: None for i in ids}
+    details_map = CRUD.get_etablissements_details_bulk(db, ids)
 
     items_rich = []
     for it in base.get("items", []):
@@ -444,6 +443,7 @@ def predict(
     base["items_rich"] = items_rich
     base["message"] = "N’hésitez pas à donner un feedback (0 à 5) via /feedback en utilisant prediction_id."
     return base
+
 
 @app.post("/feedback", response_model=schema.FeedbackOut, tags=["monitoring"])
 def submit_feedback(payload: schema.FeedbackIn,sub: str = Depends(CRUD.get_current_subject),
