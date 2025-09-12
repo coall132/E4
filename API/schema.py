@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict
 from dataclasses import dataclass
 
 class TokenOut(BaseModel):
@@ -19,37 +19,14 @@ class ApiKeyResponse(BaseModel):
     api_key: str                 
     key_id: str              
 
+
 class Form(BaseModel):
-    price_level: Optional[int]
-    city: Optional[str]
-    open: Optional[str]
-    options: Optional[list]  
-    description: Optional[str]
+    price_level:Optional[int]
+    city:Optional[str]
+    open:Optional[str]
+    options:Optional[list]
+    description:Optional[str]
     created_at: Optional[datetime] = Field(default=None, json_schema_extra={"readOnly": True})
-
-    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
-
-    @field_validator("options", mode="before")
-    @classmethod
-    def _coerce_options(cls, v):
-        if v is None or v == "":
-            return []
-        if isinstance(v, list):
-            return v
-        if isinstance(v, str):
-            return [s.strip() for s in v.split(",") if s.strip()]
-        # Laisse Pydantic lever une 422 si vraiment autre chose
-        return v
-
-    @field_validator("price_level", mode="before")
-    @classmethod
-    def _coerce_price_level(cls, v):
-        # Accepte "2" -> 2 ; None/"" -> None
-        if v is None or v == "":
-            return None
-        if isinstance(v, str) and v.strip().isdigit():
-            return int(v.strip())
-        return v
 
 class PredictionItem(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
