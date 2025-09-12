@@ -152,6 +152,28 @@ def load_df():
 
     options_features = df_options.copy()
 
+    defaults = {
+        "allowsDogs": False,
+        "delivery": False,
+        "goodForChildren": False,
+        "goodForGroups": False,
+        "goodForWatchingSports": False,
+        "outdoorSeating": False,
+        "reservable": False,
+        "restroom": True,
+        "servesVegetarianFood": False,
+        "servesBrunch": False,
+        "servesBreakfast": False,
+        "servesDinner": False,
+        "servesLunch": False,
+    }
+
+    for col, default in defaults.items():
+        if col not in options_features.columns:
+            options_features[col] = default
+        else:
+            options_features[col] = options_features[col].fillna(default)
+
     options_features['allowsDogs'].fillna(False, inplace=True)
     options_features['delivery'].fillna(False, inplace=True)
     options_features['goodForChildren'].fillna(False, inplace=True)

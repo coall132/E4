@@ -1,7 +1,6 @@
-from fastapi import FastAPI, Depends, HTTPException, Security, status, Query, Request, Response
+from fastapi import FastAPI, Depends, HTTPException, Security, status, Query, Request, Response, Body
 from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -216,7 +215,7 @@ def warmup():
     try:
         df = CRUD.load_df()
         if df is None or df.empty:
-            raise RuntimeError("DF_CATALOG vide")
+            raise HTTPException(500, "Catalogue vide/non chargé.")
         app.state.DF_CATALOG = df
     except Exception as e:
         print(f"[startup] Échec chargement DF_CATALOG: {e}")
@@ -317,13 +316,16 @@ def issue_token(API_key_in: Optional[str] = Security(api_key_header), db: Sessio
     return schema.TokenOut(access_token=token, expires_at=exp_ts)
 
 @app.post("/predict", tags=["predict"], dependencies=[Depends(CRUD.get_current_subject)])
-def predict(form: schema.Form,k: int = 10,use_ml: bool = True,user_id: int = Depends(CRUD.current_user_id),db: Session = Depends(get_db),):
+def predict(payload: dict = Body(...),k: int = 10,use_ml: bool = True,user_id: int = Depends(CRUD.current_user_id),db: Session = Depends(get_db),):
     t0 = time.perf_counter()
 
     if (not hasattr(app.state, "DF_CATALOG")) or app.state.DF_CATALOG is None or app.state.DF_CATALOG.empty:
         raise HTTPException(500, "Catalogue vide/non chargé.")
     df = app.state.DF_CATALOG
-
+    try:
+        form = schema.Form(**payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
     try:
         form_row = models.FormDB(
             price_level=getattr(form, "price_level", None),
