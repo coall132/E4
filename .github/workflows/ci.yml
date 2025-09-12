@@ -38,6 +38,7 @@ jobs:
         env:
           DISABLE_WARMUP: "1"
           API_STATIC_KEY: ${{ secrets.API_STATIC_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
           PYTHONPATH: ${{ github.workspace }} 
         run: pytest -q
 
