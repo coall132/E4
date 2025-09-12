@@ -21,11 +21,11 @@ class ApiKeyResponse(BaseModel):
 
 
 class Form(BaseModel):
-    price_level:Optional[int]
-    city:Optional[str]
-    open:Optional[str]
-    options:Optional[list]
-    description:Optional[str]
+    price_level:Optional[int] = None
+    city:Optional[str] = None
+    open:Optional[str] = None
+    options:Optional[list] = None
+    description:Optional[str] = None
     created_at: Optional[datetime] = Field(default=None, json_schema_extra={"readOnly": True})
 
 class PredictionItem(BaseModel):

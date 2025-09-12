@@ -122,6 +122,7 @@ def test_predict_fails_when_catalog_empty(client, monkeypatch):
 
     r = client.post("/predict",
                     headers={"Authorization": f"Bearer {token}"},
-                    json={"description": "test"})
+                    json={"description": "test"},
+                    params={"k": 2, "use_ml": True})
     assert r.status_code == 500
     assert "Catalogue vide" in r.text
