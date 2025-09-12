@@ -126,9 +126,9 @@ async function openDetail(etabId) {
 // ===== Soumission prédiction =====
 $("#predict-form")?.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const cp   = $("#cp").value.trim() || "37000";
+  const cp   = $("#cp").value.trim() ;
   const desc = $("#desc").value.trim();
-  const pRaw = $("#price").value || "2";
+  const pRaw = $("#price").value ;
   const k    = parseInt($("#k").value, 10) || 10;
   const openKey = datetimeToOpenKey($("#datetime").value);
   const opts = [...($("#opts")?.selectedOptions ?? [])].map(o => o.value);
@@ -137,13 +137,13 @@ $("#predict-form")?.addEventListener("submit", async (e) => {
   const payload = {
     description: desc || "",
     open: openKey || "",
-    options: opts,           
+    options: opts || [],           
   };
   if (pRaw !== "") {
     const p = parseInt(pRaw, 10);
-    if (!Number.isNaN(p)) payload.price_level = p;
+    if (!Number.isNaN(p)) payload.price_level = p || "2";
   }
-  if (cp) payload.city = cp;
+  if (cp) payload.city = cp || "37000";
 
   const cont = $("#predict-result");
   cont.innerHTML = `<div class="alert alert-secondary">Calcul en cours…</div>`;

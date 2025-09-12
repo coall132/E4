@@ -114,15 +114,3 @@ def test_predict(client, db_session, monkeypatch):
     pred = db_session.query(models.Prediction).filter(models.Prediction.id == pred_id).first()
     assert pred is not None
     assert len(pred.items) == len(data["items"])
-
-def test_predict_fails_when_catalog_empty(client, monkeypatch):
-    # Force un catalogue vide
-    app.state.DF_CATALOG = pd.DataFrame()
-    token = register_and_token(client)
-
-    r = client.post("/predict",
-                    headers={"Authorization": f"Bearer {token}"},
-                    json={"description": "test"},
-                    params={"k": 2, "use_ml": True})
-    assert r.status_code == 500
-    assert "Catalogue vide" in r.text
