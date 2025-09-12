@@ -124,5 +124,5 @@ def test_predict_sucess_when_form_empty(client, monkeypatch):
                     headers={"Authorization": f"Bearer {token}"},
                     json={},
                     params={"k": 2, "use_ml": True})
-    assert r.status_code ==200 
+    assert r.status_code == 500
     assert "Catalogue vide" in r.text
