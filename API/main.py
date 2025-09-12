@@ -33,6 +33,8 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from fastapi.responses import PlainTextResponse
 import redis.asyncio as redis
+import logging
+logger = logging.getLogger(__name__)
 
 MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI") 
 MLFLOW_EXP = os.getenv("MLFLOW_EXPERIMENT", "reco-inference")
@@ -394,8 +396,7 @@ def predict(form: schema.Form,k: int = 10,use_ml: bool = True,user_id: int = Dep
     latency_ms = int((time.perf_counter() - t0) * 1000)
     model_version = os.getenv("MODEL_VERSION") or getattr(app.state, "MODEL_VERSION", None) or "dev"
 
-    pred_row = models.Prediction(form_id=form_id,k=k,model_version=model_version,latency_ms=latency_ms,status="ok",
-                                 )
+    pred_row = models.Prediction(form_id=form_id,k=k,model_version=model_version,latency_ms=latency_ms,status="ok",)
     if hasattr(models.Prediction, "user_id"):
         setattr(pred_row, "user_id", user_id)
 
