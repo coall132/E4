@@ -147,7 +147,7 @@ def h_rating_vector(df, alpha=20.0):
     return np.clip(r_star/5.0, 0.0, 1.0).to_numpy(dtype=float)
 
 def h_city_vector(df, form):
-    pcs = fget(form, 'code_postal', None)
+    pcs = fget(form, 'code_postal', None) or fget(form, 'city', None)
     if pcs is None or 'code_postal' not in df.columns:
         return np.ones(len(df), dtype=float)
     if not isinstance(pcs, (list, tuple, set)):
