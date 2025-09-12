@@ -34,6 +34,8 @@ from slowapi.errors import RateLimitExceeded
 from fastapi.responses import PlainTextResponse
 import redis.asyncio as redis
 import logging
+import sys
+import traceback
 logger = logging.getLogger(__name__)
 
 MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI") 
@@ -320,130 +322,139 @@ def issue_token(API_key_in: Optional[str] = Security(api_key_header), db: Sessio
 
 @app.post("/predict", tags=["predict"], dependencies=[Depends(CRUD.get_current_subject)])
 def predict(form: schema.Form,k: int = 10,use_ml: bool = True,user_id: int = Depends(CRUD.current_user_id),db: Session = Depends(get_db),):
-    t0 = time.perf_counter()
+    try :   
+        t0 = time.perf_counter()
 
-    if (not hasattr(app.state, "DF_CATALOG")) or app.state.DF_CATALOG is None or app.state.DF_CATALOG.empty:
-        raise HTTPException(500, "Catalogue vide/non chargé.")
-    df = app.state.DF_CATALOG
+        if (not hasattr(app.state, "DF_CATALOG")) or app.state.DF_CATALOG is None or app.state.DF_CATALOG.empty:
+            raise HTTPException(500, "Catalogue vide/non chargé.")
+        df = app.state.DF_CATALOG
 
-    try:
-        form_row = models.FormDB(
-            price_level=getattr(form, "price_level", None),
-            city=getattr(form, "city", None),
-            open=getattr(form, "open", None),
-            options=getattr(form, "options", None),
-            description=getattr(form, "description", None),
-        )
-        db.add(form_row)
-        db.flush()
-        form_id = form_row.id
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(500, f"Insertion du formulaire impossible: {e}")
-
-    anchors = getattr(app.state, "ANCHORS", None)
-    X_df, gains_proxy = build_item_features_df(df=df,form=form.model_dump(),sent_model=app.state.SENT_MODEL,
-        include_query_consts=True,anchors=anchors)
-
-    used_ml = False
-    scores = np.asarray(gains_proxy, dtype=float)  
-
-    model  = getattr(app.state, "ML_MODEL", None)
-    preproc = getattr(app.state, "PREPROC", None)
-    X_items = getattr(app.state, "X_ITEMS", None)
-
-    raw = X_df.drop(columns=["id_etab"], errors="ignore")
-    raw_nb = CRUD._numeric_bool_to_float(raw)
-
-    if use_ml and model is not None:
         try:
-            if CRUD._is_sklearn_pipeline(model):
-                X_in = raw_nb
+            form_row = models.FormDB(
+                price_level=getattr(form, "price_level", None),
+                city=getattr(form, "city", None),
+                open=getattr(form, "open", None),
+                options=getattr(form, "options", None),
+                description=getattr(form, "description", None),
+            )
+            db.add(form_row)
+            db.flush()
+            form_id = form_row.id
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(500, f"Insertion du formulaire impossible: {e}")
 
-                n_exp = getattr(model, "n_features_in_", None)
-                if n_exp is not None and X_in.shape[1] != n_exp:
-                    if X_in.shape[1] > n_exp:
-                        X_in = X_in.iloc[:, :n_exp]
-                    else:
-                        pad = np.zeros((X_in.shape[0], n_exp - X_in.shape[1]), dtype=float)
-                        X_in = np.hstack([X_in.to_numpy(dtype=float), pad])
+        anchors = getattr(app.state, "ANCHORS", None)
+        X_df, gains_proxy = build_item_features_df(df=df,form=form.model_dump(),sent_model=app.state.SENT_MODEL,
+            include_query_consts=True,anchors=anchors)
 
-                scores = utils._predict_scores(model, X_in)
-                used_ml = True
+        used_ml = False
+        scores = np.asarray(gains_proxy, dtype=float)  
 
-            else:
-                feat_cols_train = getattr(app.state, "FEATURE_COLS_TRAIN", None) \
-                                  or getattr(app.state, "FEATURE_COLS", None)
-                X_align = utils._align_df_to_cols(raw_nb, feat_cols_train) if feat_cols_train else raw_nb
+        model  = getattr(app.state, "ML_MODEL", None)
+        preproc = getattr(app.state, "PREPROC", None)
+        X_items = getattr(app.state, "X_ITEMS", None)
 
-                if preproc is not None:
-                    X_sp = preproc.transform(X_align)
-                    X_in = X_sp.toarray().astype(np.float32) if hasattr(X_sp, "toarray") else np.asarray(X_sp, dtype=np.float32)
+        raw = X_df.drop(columns=["id_etab"], errors="ignore")
+        raw_nb = CRUD._numeric_bool_to_float(raw)
+
+        if use_ml and model is not None:
+            try:
+                if CRUD._is_sklearn_pipeline(model):
+                    X_in = raw_nb
+
+                    n_exp = getattr(model, "n_features_in_", None)
+                    if n_exp is not None and X_in.shape[1] != n_exp:
+                        if X_in.shape[1] > n_exp:
+                            X_in = X_in.iloc[:, :n_exp]
+                        else:
+                            pad = np.zeros((X_in.shape[0], n_exp - X_in.shape[1]), dtype=float)
+                            X_in = np.hstack([X_in.to_numpy(dtype=float), pad])
+
                     scores = utils._predict_scores(model, X_in)
                     used_ml = True
+
                 else:
-                    used_ml = False
+                    feat_cols_train = getattr(app.state, "FEATURE_COLS_TRAIN", None) \
+                                    or getattr(app.state, "FEATURE_COLS", None)
+                    X_align = utils._align_df_to_cols(raw_nb, feat_cols_train) if feat_cols_train else raw_nb
 
+                    if preproc is not None:
+                        X_sp = preproc.transform(X_align)
+                        X_in = X_sp.toarray().astype(np.float32) if hasattr(X_sp, "toarray") else np.asarray(X_sp, dtype=np.float32)
+                        scores = utils._predict_scores(model, X_in)
+                        used_ml = True
+                    else:
+                        used_ml = False
+
+            except Exception as e:
+                print(f"[predict] chemin ML en échec, fallback proxy: {e}")
+                used_ml = False
+
+
+        k = int(max(1, min(k or 10, 50)))
+        order = np.argsort(scores)[::-1]
+        sel = order[:k]
+
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+        model_version = os.getenv("MODEL_VERSION") or getattr(app.state, "MODEL_VERSION", None) or "dev"
+
+        pred_row = models.Prediction(form_id=form_id,k=k,model_version=model_version,latency_ms=latency_ms,status="ok",)
+        if hasattr(models.Prediction, "user_id"):
+            setattr(pred_row, "user_id", user_id)
+
+        pred_row.items = []
+        for r, i in enumerate(sel, start=1):
+            etab_id = int(df.iloc[i]["id_etab"]) if "id_etab" in df.columns else int(i)
+            pred_row.items.append(
+                models.PredictionItem(rank=r, etab_id=etab_id, score=float(scores[i])),
+            )
+
+        try:
+            db.add(pred_row)
+            db.commit()
+            db.refresh(pred_row)
         except Exception as e:
-            print(f"[predict] chemin ML en échec, fallback proxy: {e}")
-            used_ml = False
+            db.rollback()
+            raise HTTPException(500, f"Insertion de la prédiction impossible: {e}")
 
+        try:
+            pyd_pred = schema.Prediction.model_validate(pred_row)
+            CRUD.log_prediction_event(
+                prediction=pyd_pred,
+                form_dict=form.model_dump(),
+                scores=np.asarray(scores, dtype=float),
+                used_ml=used_ml,
+                latency_ms=latency_ms,
+                model_version=model_version,
+            )
+        except Exception as e:
+            print(f"[mlflow] log_prediction_event failed: {e}")
+        
+        base = schema.Prediction.model_validate(pred_row).model_dump()
 
-    k = int(max(1, min(k or 10, 50)))
-    order = np.argsort(scores)[::-1]
-    sel = order[:k]
+        pred_id = str(pred_row.id)
+        base.setdefault("id", pred_id)
+        base["prediction_id"] = pred_id
 
-    latency_ms = int((time.perf_counter() - t0) * 1000)
-    model_version = os.getenv("MODEL_VERSION") or getattr(app.state, "MODEL_VERSION", None) or "dev"
+        ids = [int(it["etab_id"]) for it in base.get("items", [])]
+        details_map = CRUD.get_etablissements_details_bulk(db, ids)
 
-    pred_row = models.Prediction(form_id=form_id,k=k,model_version=model_version,latency_ms=latency_ms,status="ok",)
-    if hasattr(models.Prediction, "user_id"):
-        setattr(pred_row, "user_id", user_id)
+        items_rich = []
+        for it in base.get("items", []):
+            d = details_map.get(int(it["etab_id"]))
+            items_rich.append({**it, "details": d})
 
-    pred_row.items = []
-    for r, i in enumerate(sel, start=1):
-        etab_id = int(df.iloc[i]["id_etab"]) if "id_etab" in df.columns else int(i)
-        pred_row.items.append(
-            models.PredictionItem(rank=r, etab_id=etab_id, score=float(scores[i])),
-        )
-
-    try:
-        db.add(pred_row)
-        db.commit()
-        db.refresh(pred_row)
+        base["items_rich"] = items_rich
+        base["message"] = "N’hésitez pas à donner un feedback (0 à 5) via /feedback en utilisant prediction_id."
+        return base
     except Exception as e:
-        db.rollback()
-        raise HTTPException(500, f"Insertion de la prédiction impossible: {e}")
-
-    try:
-        pyd_pred = schema.Prediction.model_validate(pred_row)
-        CRUD.log_prediction_event(
-            prediction=pyd_pred,
-            form_dict=form.model_dump(),
-            scores=np.asarray(scores, dtype=float),
-            used_ml=used_ml,
-            latency_ms=latency_ms,
-            model_version=model_version,
-        )
-    except Exception as e:
-        print(f"[mlflow] log_prediction_event failed: {e}")
-
-    base = schema.Prediction.model_validate(pred_row).model_dump()
-    pred_id = str(pred_row.id)
-    base.setdefault("id", pred_id)
-    base["prediction_id"] = pred_id
-
-    ids = [int(it["etab_id"]) for it in base.get("items", [])]
-    details_map = CRUD.get_etablissements_details_bulk(db, ids)
-
-    items_rich = []
-    for it in base.get("items", []):
-        d = details_map.get(int(it["etab_id"]))
-        items_rich.append({**it, "details": d})
-
-    base["items_rich"] = items_rich
-    base["message"] = "N’hésitez pas à donner un feedback (0 à 5) via /feedback en utilisant prediction_id."
-    return base
+        # Ce bloc attrapera n'importe quel crash et l'affichera
+        print("\n---! ERREUR DANS L'ENDPOINT /predict !---", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        print("-----------------------------------------\n", file=sys.stderr)
+        
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
 
 @app.post("/feedback", response_model=schema.FeedbackOut, tags=["monitoring"])
