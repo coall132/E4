@@ -403,12 +403,28 @@ def predict(form: schema.Form,k: int = 10,use_ml: bool = True,user_id: int = Dep
         if hasattr(models.Prediction, "user_id"):
             setattr(pred_row, "user_id", user_id)
 
+        candidate_ids = [
+            int(df.iloc[i]["id_etab"]) if "id_etab" in df.columns else int(i)
+            for i in sel
+        ]
+
+        rows = db.query(models.Etablissement.id_etab)\
+                .filter(models.Etablissement.id_etab.in_(candidate_ids))\
+                .all()
+        existing_ids = {int(x[0]) for x in rows}
+
         pred_row.items = []
-        for r, i in enumerate(sel, start=1):
+        rank = 1
+        for i in sel:
             etab_id = int(df.iloc[i]["id_etab"]) if "id_etab" in df.columns else int(i)
+            if etab_id not in existing_ids:
+                # facultatif: logger
+                print(f"[predict] skip etab_id={etab_id} (absent en DB)")
+                continue
             pred_row.items.append(
-                models.PredictionItem(rank=r, etab_id=etab_id, score=float(scores[i])),
+                models.PredictionItem(rank=rank, etab_id=etab_id, score=float(scores[i]))
             )
+            rank += 1
 
         try:
             db.add(pred_row)
