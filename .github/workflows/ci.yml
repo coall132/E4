@@ -103,8 +103,8 @@ jobs:
       - name: Build & push Redis image
         uses: docker/build-push-action@v6
         with:
-          context: ./redis
-          file: ./redis/Dockerfile
+          context: .
+          file: ./redis.Dockerfile
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/restaurant-redis:latest
