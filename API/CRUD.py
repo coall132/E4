@@ -14,8 +14,9 @@ import numpy as np
 import pandas as pd
 import os, mlflow
 from mlflow.tracking import MlflowClient
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import io
-from sentence_transformers import SentenceTransformer
+#from sentence_transformers import SentenceTransformer
 
 try:
     from . import models
@@ -32,7 +33,7 @@ except:
     from API import utils
 
 api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)  # pour /auth/token uniquement
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+http_bearer = HTTPBearer(auto_error=False)
 ph = PasswordHasher(time_cost=2, memory_cost=102400, parallelism=8)
 
 API_STATIC_KEY = os.getenv("API_STATIC_KEY")  # pour échanger contre un token
@@ -48,21 +49,23 @@ def create_access_token(subject: str, expires_delta: Optional[timedelta] = None)
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=ALGORITHM)
     return encoded_jwt, int(expire.timestamp())
 
-async def get_current_subject(token: str = Depends(oauth2_scheme)):
-    credentials_exc = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Token invalide ou expiré.",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+async def get_current_subject(credentials: HTTPAuthorizationCredentials = Security(http_bearer),):
+    cred_exc = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Token manquant ou invalide.",
+        headers={"WWW-Authenticate": "Bearer"},)
+
+    if not credentials or (credentials.scheme or "").lower() != "bearer":
+        raise cred_exc
+
+    token = credentials.credentials
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
-        sub: Optional[str] = payload.get("sub")
-        if sub is None:
-            raise credentials_exc
+        sub = payload.get("sub")
+        if not sub:
+            raise cred_exc
         return sub
     except JWTError:
-        raise credentials_exc
-
+        raise cred_exc
 def generate_api_key():
     key_id = secrets.token_hex(4)
     secret = base64.urlsafe_b64encode(secrets.token_bytes(24)).decode().rstrip("=")
@@ -106,9 +109,10 @@ def current_user_id(subject: str = Depends(get_current_subject)) -> int:
 def load_ML():
     state = schema.MLState()
     state.preproc_factory = bm.make_preproc_final
+    state.preproc = bm.preproc
     try:
         1==2
-        state.sent_model = SentenceTransformer("BAAI/bge-m3")
+        #state.sent_model=SentenceTransformer("BAAI/bge-m3")
     except Exception:
         state.sent_model = None
 

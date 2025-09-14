@@ -6,7 +6,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler, OrdinalEncoder, FunctionTransformer
 from sklearn.impute import SimpleImputer
-from sentence_transformers import SentenceTransformer
+#from sentence_transformers import SentenceTransformer
 from sklearn.base import BaseEstimator, TransformerMixin
 import pgeocode
 import re
@@ -29,6 +29,7 @@ try:
 except:
     import CRUD
 
+model=1
 
 W_proxy = {'price':0.18,'rating':0.14,'options':0.14,'text':0.28,'city':0.04,'open':0.04}
 W_eval  = {'price':0.12,'rating':0.18,'options':0.12,'text':0.22,'city':0.20,'open':0.16}
@@ -559,6 +560,6 @@ def train_pointwise_from_csv(forms_csv: str,out_path: str | None = None,clf_name
     joblib.dump(pipe, out_path)
     print(f"[train] modèle sauvegardé -> {out_path}")
     return out_path, cols
-
+preproc = make_preproc_final()
 if __name__ == "__main__":
     train_pointwise_from_csv("forms_restaurants_dept37_single_cp.csv")
