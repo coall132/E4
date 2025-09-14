@@ -15,6 +15,7 @@ import pandas as pd
 import os, mlflow
 from mlflow.tracking import MlflowClient
 import io
+from sentence_transformers import SentenceTransformer
 
 try:
     from . import models
@@ -105,7 +106,10 @@ def current_user_id(subject: str = Depends(get_current_subject)) -> int:
 def load_ML():
     state = schema.MLState()
     state.preproc_factory = bm.make_preproc_final
-    state.sent_model = getattr(bm, "model", None)
+    try:
+        state.sent_model = SentenceTransformer("BAAI/bge-m3")
+    except Exception:
+        state.sent_model = None
 
     if not (state.preproc or state.preproc_factory):
             raise RuntimeError("Aucun préprocesseur trouvé dans benchmark_3 (preproc ou build_preproc).")

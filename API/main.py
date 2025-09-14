@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session, selectinload
-from sqlalchemy import or_
+from sqlalchemy import or_, cast, Integer
 from typing import List, Optional
 import os, time
 from datetime import timedelta, datetime, timezone
@@ -36,6 +36,7 @@ import redis.asyncio as redis
 import logging
 import sys
 import traceback
+from fastapi.openapi.utils import get_openapi
 logger = logging.getLogger(__name__)
 
 MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI") 
@@ -80,10 +81,28 @@ except :
     pick_anchors_from_df = bm.pick_anchors_from_df
     make_preproc_final = bm.make_preproc_final
 
+
+tags_metadata = [
+    {"name": "Auth", "description": "Endpoints d’inscription/connexion pour l’UI (captcha, etc.)."},
+    {"name": "predict", "description": "Recommandations d’établissements."},
+    {"name": "monitoring", "description": "Feedback et suivi qualité."},
+    {"name": "ui", "description": "Pages HTML pour l’interface web."},
+]
+
 app = FastAPI(
-    title="API Reco Restaurant",
-    description="API pour recommander des restaurants",
-    version="1.0.0"
+    title="API Reco Restaurant (E4)",
+    description="API pour recommander des restaurants (avec endpoints UI / rate-limit / captcha).",
+    version="1.0.0",
+    openapi_tags=tags_metadata,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    swagger_ui_parameters={
+        "displayRequestDuration": True,
+        "docExpansion": "list",
+        "defaultModelsExpandDepth": 1,
+        "defaultModelExpandDepth": 1,
+        "tryItOutEnabled": True,
+    },
 )
 
 app.add_middleware(
@@ -93,6 +112,31 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    comps = schema.setdefault("components", {}).setdefault("securitySchemes", {})
+
+    comps["BearerAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+    }
+
+    schema["security"] = [{"BearerAuth": []}]
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
+
 def client_ip(request):
     xff = request.headers.get("x-forwarded-for")
     if xff:
@@ -240,8 +284,10 @@ def warmup():
         if app.state.SENT_MODEL is None:
             dim = utils._infer_embed_dim(app.state.DF_CATALOG, default=1024)
             app.state.SENT_MODEL = utils._StubSentModel(dim=dim)
+            print("Model fake embedding ___________________")
         print(f"[startup] ML: PREPROC={type(app.state.PREPROC).__name__ if app.state.PREPROC else 'None'} | "
-              f"MODEL={'ok' if app.state.ML_MODEL is not None else 'None'}")
+              f"MODEL={'ok' if app.state.ML_MODEL is not None else 'None'} |"
+              f"EMbedding ={'ok' if app.state.SENT_MODEL is not None else 'None'}")
     except Exception as e:
         print(f"[startup] Échec chargement ML: {e}")
         app.state.PREPROC = None
@@ -289,7 +335,7 @@ async def get_optional_current_user(request: Request, db: Session = Depends(get_
     except HTTPException:
         return None
 
-@app.post("/auth/api-keys", response_model=schema.ApiKeyResponse, tags=["Auth"])
+@app.post("/auth/api-keys", response_model=schema.ApiKeyResponse, tags=["Auth"], include_in_schema=False)
 def create_api_key(API_key_in: schema.ApiKeyCreate,password:str, db: Session = Depends(get_db)):
     if password != API_STATIC_KEY:
         raise HTTPException(
@@ -314,13 +360,24 @@ def create_api_key(API_key_in: schema.ApiKeyCreate,password:str, db: Session = D
     return schema.ApiKeyResponse(api_key=api_key_plain, key_id=key_id)
 
 
-@app.post("/auth/token", response_model=schema.TokenOut, tags=["Auth"])
+@app.post("/auth/token", response_model=schema.TokenOut, tags=["Auth"], include_in_schema=False)
 def issue_token(API_key_in: Optional[str] = Security(api_key_header), db: Session = Depends(get_db)):
     row = CRUD.verify_api_key(db, API_key_in)
     token, exp_ts = CRUD.create_access_token(subject=f"user:{row.user_id}")
     return schema.TokenOut(access_token=token, expires_at=exp_ts)
 
-@app.post("/predict", tags=["predict"], dependencies=[Depends(CRUD.get_current_subject)])
+@app.post("/predict", tags=["predict"], dependencies=[Depends(CRUD.get_current_subject)],summary="Obtenir des recommandations",
+    description=("Calcule un top-k d’établissements en fonction du formulaire utilisateur.\n\n"
+                 "- `use_ml=true` active le modèle ML si disponible, sinon fallback proxy.\n"
+                 "- `k` borné à [1, 50]."),
+    response_model=schema.Prediction,  
+    response_model_exclude_none=True,
+    responses={400: {"description": "Entrée invalide"},
+               401: {"description": "Non autorisé (Bearer manquant/erroné)"},
+               500: {"description": "Erreur serveur"},},
+    openapi_extra={"requestBody": {"content": {"application/json": {"examples": {"simple": {"summary": "Recherche simple",
+                            "value": {"description": "italien terrasse","price_level": 2,"city": "Tours","open": "soir_weekend",
+                                "options": ["reservable","outdoorSeating"]}}}}}}})
 def predict(form: schema.Form,k: int = 10,use_ml: bool = True,user_id: int = Depends(CRUD.current_user_id),db: Session = Depends(get_db),):
     try :   
         t0 = time.perf_counter()
@@ -472,7 +529,11 @@ def predict(form: schema.Form,k: int = 10,use_ml: bool = True,user_id: int = Dep
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
 
-@app.post("/feedback", response_model=schema.FeedbackOut, tags=["monitoring"])
+@app.post("/feedback", response_model=schema.FeedbackOut, tags=["monitoring"],summary="Envoyer un feedback utilisateur",
+    description="Attache une note/commentaire à une prédiction existante.",
+    responses={401: {"description": "Non autorisé"},
+               403: {"description": "La prédiction n’appartient pas à l’utilisateur courant"},
+               404: {"description": "Prédiction introuvable"}})
 def submit_feedback(payload: schema.FeedbackIn,sub: str = Depends(CRUD.get_current_subject),
                     db: Session = Depends(get_db),user_id: int = Depends(CRUD.current_user_id)):
     pred = db.query(models.Prediction).options(selectinload(models.Prediction.items)).filter(models.Prediction.id == payload.prediction_id).first()
@@ -498,7 +559,7 @@ def submit_feedback(payload: schema.FeedbackIn,sub: str = Depends(CRUD.get_curre
     return schema.FeedbackOut()
 
 @limiter.limit("15/minute; 2/10second")
-@app.post("/auth/web/token", response_model=schema.TokenOut, tags=["Auth"])
+@app.post("/auth/web/token", response_model=schema.TokenOut, tags=["Auth"],openapi_extra={"security": []})
 async def login_for_web_access_token(request: Request,db: Session = Depends(get_db),form_data: OAuth2PasswordRequestForm = Depends(),
                                      cf_token: str = Form(alias="cf-turnstile-response", default="")):
 
@@ -521,7 +582,7 @@ async def login_for_web_access_token(request: Request,db: Session = Depends(get_
 
 
 @limiter.limit("15/minute; 2/10second")
-@app.post("/users", response_model=schema.UserOut, tags=["Auth"])
+@app.post("/users", response_model=schema.UserOut, tags=["Auth"],openapi_extra={"security": []})
 async def register_user(request: Request, db: Session = Depends(get_db)):
     try:
         data = await request.json()
@@ -552,11 +613,11 @@ async def register_user(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(409, "Cet email est déjà utilisé.")
     return CRUD.create_user(db=db, user=user_in)
 
-@app.get("/login", name="login_page", response_class=HTMLResponse)
+@app.get("/login", name="login_page", response_class=HTMLResponse, include_in_schema=False)
 def ui_login(request: Request):
     return templates.TemplateResponse("login.html", {"request": request, "ACTIVE": "login", "TURNSTILE_SITEKEY": os.getenv("TURNSTILE_SITEKEY","")})
 
-@app.get("/register", name="register_page", response_class=HTMLResponse)
+@app.get("/register", name="register_page", response_class=HTMLResponse, include_in_schema=False)
 def ui_register(request: Request):
     return templates.TemplateResponse("register.html", {"request": request, "ACTIVE": "register", "TURNSTILE_SITEKEY": os.getenv("TURNSTILE_SITEKEY","")})
 
@@ -567,20 +628,20 @@ def logout_get(request: Request):
     resp.delete_cookie("ACCESS_TOKEN") 
     return resp
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def home(request: Request,current_user: Optional[models.User] = Depends(get_optional_current_user),):
     if not current_user:
         return RedirectResponse(url="/login")
     return templates.TemplateResponse("home.html",{"request": request,"ACTIVE": "home","user": current_user,},)
 
-@app.get("/predict", response_class=HTMLResponse, name="ui_predict")
+@app.get("/predict", response_class=HTMLResponse, name="ui_predict", include_in_schema=False)
 def ui_predict(request: Request):
     token = request.cookies.get("ACCESS_TOKEN")
     if not token:
         return RedirectResponse(url="/login", status_code=303)
     return templates.TemplateResponse("predict.html", {"request": request})
 
-@app.get("/history", response_class=HTMLResponse, name="history")
+@app.get("/history", response_class=HTMLResponse, name="history", include_in_schema=False)
 def history_page(request: Request):
     # exiger l’authentification (sinon rediriger)
     token = request.cookies.get("ACCESS_TOKEN")
@@ -588,14 +649,14 @@ def history_page(request: Request):
         return RedirectResponse(url="/login", status_code=303)
     return templates.TemplateResponse("history.html", {"request": request, "ACTIVE": "history"})
 
-@app.get("/data", response_class=HTMLResponse, name="data", tags=["ui"])
+@app.get("/data", response_class=HTMLResponse, name="data", tags=["ui"], include_in_schema=False)
 def data_page(request: Request):
     token = request.cookies.get("ACCESS_TOKEN") or request.cookies.get("auth_token")
     if not token:
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse("data.html", {"request": request, "ACTIVE": "data"})
 
-@app.get("/restaurant/{etab_id}", tags=["ui"])
+@app.get("/restaurant/{etab_id}", tags=["ui"], include_in_schema=False)
 def restaurant_detail(etab_id: int, db: Session = Depends(get_db)):
     etab = (
         db.query(models.Etablissement)
@@ -768,31 +829,15 @@ def get_prediction_detail(pred_id: str, db: Session = Depends(get_db), user_id: 
     }
 
 @app.get("/ui/api/restaurants", tags=["ui"])
-def list_restaurants(
-    q: Optional[str] = None,
-    city: Optional[str] = None,
-    price_level: Optional[int] = Query(None, ge=1, le=4),
-    open_day: Optional[str] = None,
-    options: Optional[List[str]] = Query(None),  # accepte aussi "delivery,reservable"
-    sort_by: Optional[str] = None,               # 'nom' | 'rating' | 'price'/'price_level'
-    sort_dir: Optional[str] = "asc",             # 'asc' | 'desc'
-    skip: int = 0,
-    limit: int = 50,
-    db: Session = Depends(get_db)
-):
-    """
-    Recherche avec filtres + tri/pagination.
-    Tri:
-      - sort_by: 'nom' | 'rating' | 'price' (ou 'price_level')
-      - sort_dir: 'asc' | 'desc'
-    """
+def list_restaurants(q: Optional[str] = None,city: Optional[str] = None,price_level: Optional[int] = Query(None, ge=1, le=4),
+    open_day: Optional[str] = None,options: Optional[List[str]] = Query(None),sort_by: Optional[str] = None,               
+    sort_dir: Optional[str] = "asc",skip: int = 0,limit: int = 50,db: Session = Depends(get_db)):
 
     q0 = db.query(models.Etablissement)
 
     # -- jointures facultatives selon les filtres
     joined_options = False
     if options:
-        # support CSV "a,b,c" => ["a","b","c"]
         if len(options) == 1 and isinstance(options[0], str) and "," in options[0]:
             options = [s for s in options[0].split(",") if s]
         q0 = q0.join(models.Options)

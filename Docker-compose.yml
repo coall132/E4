@@ -55,7 +55,7 @@ services:
       MLFLOW_SERVE_ARTIFACTS: "true"
       MPLCONFIGDIR: /tmp
     volumes:
-      - mlflow_artifacts2:/mlruns2
+      - mlflow_artifacts2:/mlruns
     ports: ["5002:5000"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if 200<=urllib.request.urlopen('http://127.0.0.1:5000/', timeout=3).getcode()<400 else 1)"]
