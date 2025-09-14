@@ -313,14 +313,13 @@ def warmup():
     print(f"[startup] OK | rows={len(df)} | features={len(feature_cols)} | anchors={anch_shape} |")
 
 async def get_optional_current_user(request: Request, db: Session = Depends(get_db)):
-    token = request.cookies.get("auth_token")
+    token = request.cookies.get("auth_token") or request.cookies.get("ACCESS_TOKEN")
     if not token:
         return None
     try:
-        subject = await CRUD.get_current_subject(token)
+        subject = CRUD.decode_subject_from_token(token)
         user_id = CRUD.current_user_id(subject)
-        user = db.query(models.User).filter(models.User.id == user_id).first()
-        return user
+        return db.query(models.User).filter(models.User.id == user_id).first()
     except HTTPException:
         return None
 

@@ -49,15 +49,9 @@ def create_access_token(subject: str, expires_delta: Optional[timedelta] = None)
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=ALGORITHM)
     return encoded_jwt, int(expire.timestamp())
 
-async def get_current_subject(credentials: HTTPAuthorizationCredentials = Security(http_bearer),):
+def decode_subject_from_token(token: str):
     cred_exc = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Token manquant ou invalide.",
-        headers={"WWW-Authenticate": "Bearer"},)
-
-    if not credentials or (credentials.scheme or "").lower() != "bearer":
-        raise cred_exc
-
-    token = credentials.credentials
+        detail="Token manquant ou invalide.",headers={"WWW-Authenticate": "Bearer"},)
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[ALGORITHM])
         sub = payload.get("sub")
@@ -66,6 +60,14 @@ async def get_current_subject(credentials: HTTPAuthorizationCredentials = Securi
         return sub
     except JWTError:
         raise cred_exc
+
+async def get_current_subject(credentials: HTTPAuthorizationCredentials = Security(http_bearer),):
+    cred_exc = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Token manquant ou invalide.",headers={"WWW-Authenticate": "Bearer"},)
+    if not credentials or (credentials.scheme or "").lower() != "bearer":
+        raise cred_exc
+    return decode_subject_from_token(credentials.credentials)
+    
 def generate_api_key():
     key_id = secrets.token_hex(4)
     secret = base64.urlsafe_b64encode(secrets.token_bytes(24)).decode().rstrip("=")
