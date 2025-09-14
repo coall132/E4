@@ -418,7 +418,6 @@ def predict(form: schema.Form,k: int = 10,use_ml: bool = True,user_id: int = Dep
         for i in sel:
             etab_id = int(df.iloc[i]["id_etab"]) if "id_etab" in df.columns else int(i)
             if etab_id not in existing_ids:
-                # facultatif: logger
                 print(f"[predict] skip etab_id={etab_id} (absent en DB)")
                 continue
             pred_row.items.append(

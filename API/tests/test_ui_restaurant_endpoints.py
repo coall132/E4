@@ -1,7 +1,3 @@
-"""
-Tests d'intégration sur /restaurant/{id} et /restaurant/{id}/reviews.
-"""
-
 def test_restaurant_detail_and_reviews(client, db_session):
     # Import local pour éviter import au module
     from API import models
