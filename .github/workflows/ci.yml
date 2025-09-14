@@ -69,8 +69,8 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/restaurant-api2:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/restaurant-api2:${{ github.sha }}
-          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/restaurant-api:buildcache
-          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/restaurant-api:buildcache,mode=max
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/restaurant-api2:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/restaurant-api2:buildcache,mode=max
 
       # ---------- MLflow (suffix 2 comme dans ton compose) ----------
       - name: Build & push MLflow image
