@@ -107,6 +107,7 @@ def load_ML():
     state = schema.MLState()
     state.preproc_factory = bm.make_preproc_final
     try:
+        1==2
         state.sent_model = SentenceTransformer("BAAI/bge-m3")
     except Exception:
         state.sent_model = None

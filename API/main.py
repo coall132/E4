@@ -116,24 +116,13 @@ app.add_middleware(
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
-
-    schema = get_openapi(
-        title=app.title,
-        version=app.version,
-        description=app.description,
-        routes=app.routes,
-    )
+    schema = get_openapi(title=app.title, version=app.version, description=app.description, routes=app.routes)
     comps = schema.setdefault("components", {}).setdefault("securitySchemes", {})
-
-    comps["BearerAuth"] = {
-        "type": "http",
-        "scheme": "bearer",
-        "bearerFormat": "JWT",
-    }
-
+    comps["BearerAuth"] = {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}
     schema["security"] = [{"BearerAuth": []}]
     app.openapi_schema = schema
     return app.openapi_schema
+
 
 app.openapi = custom_openapi
 
