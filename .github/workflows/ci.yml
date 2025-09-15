@@ -34,14 +34,164 @@ jobs:
       - name: Run tests (API)
         working-directory: API
         env:
+          TURNSTILE_DEV_BYPASS: "1"
           DISABLE_WARMUP: "1"
           API_STATIC_KEY: ${{ secrets.API_STATIC_KEY }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           PYTHONPATH: ${{ github.workspace }}
         run: pytest -q
 
-  build-and-push:
+  tests-e2e:
     needs: tests-api
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: app
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: [ "5432:5432" ]
+        options: >-
+          --health-cmd="pg_isready -U postgres -d app"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+      redis:
+        image: redis:7
+        ports: [ "6379:6379" ]
+        options: >-
+          --health-cmd="redis-cli ping || exit 1"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      BASE_URL: http://127.0.0.1:8000
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/app
+      REDIS_URL: redis://localhost:6379/0
+      TURNSTILE_DEV_BYPASS: "1"
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      API_STATIC_KEY: ${{ secrets.API_STATIC_KEY }}
+      # Assure un warmup réel pour /predict (chargement DF_CATALOG depuis la DB seedée)
+      DISABLE_WARMUP: "0"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --- Python pour lancer FastAPI & seed DB ---
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-e2e-${{ runner.os }}-${{ hashFiles('API/requirements_dev.txt') }}
+
+      - name: Install API deps
+        working-directory: API
+        run: pip install -r requirements_dev.txt
+
+      - name: Seed database (schemas + 1 restaurant)
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: |
+          python - <<'PY'
+          import os
+          os.environ['DATABASE_URL'] = os.getenv('DATABASE_URL', '')
+          from sqlalchemy.sql import text
+          from API.database import engine, SessionLocal
+          from API import models
+
+          # Créer schémas + tables (sans Alembic)
+          with engine.begin() as conn:
+              conn.execute(text('CREATE SCHEMA IF NOT EXISTS "ml"'))
+              conn.execute(text('CREATE SCHEMA IF NOT EXISTS "user_base"'))
+          models.Base.metadata.create_all(bind=engine, checkfirst=True)
+
+          db = SessionLocal()
+          try:
+              # Insérer un resto si la table est vide
+              if not db.query(models.Etablissement).first():
+                  e = models.Etablissement(
+                      id_etab=1, nom='Test Trattoria', adresse='1 rue A, Tours',
+                      rating=4.2, priceLevel='2', latitude=47.39, longitude=0.69,
+                      websiteUri='https://example.test', description='Italien cosy'
+                  )
+                  db.add(e); db.flush()
+                  db.add(models.Options(id_etab=e.id_etab, reservable=True, outdoorSeating=True))
+                  db.add_all([
+                      models.OpeningPeriod(id_etab=e.id_etab, open_day=1, open_hour=11, open_minute=30, close_day=1, close_hour=22, close_minute=0),
+                      models.OpeningPeriod(id_etab=e.id_etab, open_day=6, open_hour=11, open_minute=30, close_day=6, close_hour=23, close_minute=0),
+                  ])
+                  db.commit()
+          finally:
+              db.close()
+          PY
+
+      - name: Start API (background)
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          REDIS_URL: ${{ env.REDIS_URL }}
+          TURNSTILE_DEV_BYPASS: "1"
+          DISABLE_WARMUP: "0"
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          API_STATIC_KEY: ${{ secrets.API_STATIC_KEY }}
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          nohup python -m uvicorn API.main:app --host 0.0.0.0 --port 8000 > api.log 2>&1 &
+
+      - name: Wait for API to be up
+        run: |
+          for i in {1..60}; do
+            if curl -fsS $BASE_URL/login >/dev/null; then
+              echo "API is up"; exit 0
+            fi
+            echo "waiting API..."; sleep 2
+          done
+          echo "::error::API did not start in time"
+          echo "---- api.log ----"
+          cat api.log || true
+          exit 1
+
+      # --- Node + Playwright ---
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with: { node-version: "20" }
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
+
+      - name: Install Playwright (no project scaffolding)
+        run: |
+          npm init -y
+          npm i -D @playwright/test
+          npx playwright install --with-deps
+
+      - name: Run Playwright tests
+        env:
+          BASE_URL: ${{ env.BASE_URL }}
+          TURNSTILE_DEV_BYPASS: "1"
+        run: npx playwright test --reporter=line
+
+      - name: Upload Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore
+
+  build-and-push:
+    needs: [tests-api, tests-e2e]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -72,7 +222,7 @@ jobs:
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/restaurant-api2:buildcache
           cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/restaurant-api2:buildcache,mode=max
 
-      # ---------- MLflow (suffix 2 comme dans ton compose) ----------
+      # ---------- MLflow ----------
       - name: Build & push MLflow image
         uses: docker/build-push-action@v6
         with:
@@ -85,7 +235,7 @@ jobs:
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/restaurant-mlflow2:buildcache
           cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/restaurant-mlflow2:buildcache,mode=max
 
-      # ---------- Monitor (suffix 2 comme dans ton compose) ----------
+      # ---------- Monitor ----------
       - name: Build & push Monitor image
         uses: docker/build-push-action@v6
         with:
@@ -99,7 +249,6 @@ jobs:
           cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/restaurant-monitor2:buildcache,mode=max
 
       # ---------- Redis ----------
-      # Si tu as mis un Dockerfile dédié (recommandé) dans ./redis/Dockerfile
       - name: Build & push Redis image
         uses: docker/build-push-action@v6
         with:
@@ -112,7 +261,7 @@ jobs:
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/restaurant-redis:buildcache
           cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/restaurant-redis:buildcache,mode=max
 
-      # ---------- fail2ban ----------
+      # ---------- Fail2ban ----------
       - name: Build & push Fail2ban image
         uses: docker/build-push-action@v6
         with:

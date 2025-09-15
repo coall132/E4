@@ -13,6 +13,20 @@
   }
   function $all(sel, root=document){ return Array.from(root.querySelectorAll(sel)); }
 
+  // -------- Date formatter (robuste aux ISO avec timezone)
+  function fmtDateTime(iso) {
+    if (!iso) return "";
+    // Safari peut être tatillon; si pas d'offset/Z, on ajoute Z
+    const hasTz = /[+-]\d\d:\d\d$|Z$/.test(iso);
+    const d = new Date(hasTz ? iso : (iso + "Z"));
+    if (isNaN(d)) return iso;
+    return d.toLocaleString('fr-FR', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false
+    }).replace(',', '');
+  }
+
   // -------- Rendu résumé de formulaire
   function renderFormSummary(form) {
     if (!form) return "";
@@ -37,7 +51,7 @@
           Array.isArray(form.options) && form.options.length ? form.options.join(", ") : "—"
         }</div>
         <div><strong>Description : </strong>${form.description || "—"}</div>
-        <div><strong>Soumis le : </strong>${form.created_at ? form.created_at.replace("T"," à ").slice(0,19) : "—"}</div>
+        <div><strong>Soumis le : </strong>${form.created_at ? fmtDateTime(form.created_at) : "—"}</div>
       </div>`;
   }
 
@@ -56,7 +70,7 @@
       }
 
       list.innerHTML = data.map(p => {
-        const created = p.form?.created_at ? p.form.created_at.replace("T"," à ").slice(0,19) : "";
+        const title = fmtDateTime(p.created_at || p.form?.created_at); // <-- Titre = date/heure
         const fbChip = (p.feedback && p.feedback.rating !== null)
           ? `<span class="badge bg-success">Note ${p.feedback.rating}/5</span>`
           : `<span class="badge bg-secondary">Pas de feedback</span>`;
@@ -64,8 +78,8 @@
           <div class="card mb-2 bg-dark text-white border-secondary pred-item" data-id="${p.id}" style="cursor:pointer;">
             <div class="card-body d-flex justify-content-between align-items-start">
               <div class="pe-3">
-                <h6 class="card-title mb-1">Prédiction #${p.id.slice(0,8)}</h6>
-                <small class="text-muted d-block mb-2">${created}</small>
+                <h6 class="card-title mb-1">${title || 'Prédiction'}</h6>
+                <small class="text-muted d-block mb-2">#${String(p.id).slice(0,8)}</small>
                 <div>${renderFormSummary(p.form)}</div>
               </div>
               <div class="text-end">
@@ -84,9 +98,10 @@
 
   // -------- Détail d'une prédiction
   async function openPredDetail(predId) {
+    const predEl = document.getElementById("predDetailModal");
+    const modal = new bootstrap.Modal(predEl);
     const body = document.getElementById("predDetailBody");
     body.innerHTML = '<p class="text-muted">Chargement…</p>';
-    const modal = new bootstrap.Modal(document.getElementById("predDetailModal"));
     modal.show();
 
     try {
@@ -94,7 +109,8 @@
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const d = await resp.json();
 
-      let html = `<h5 class="mb-2">Prédiction #${d.id.slice(0,8)}</h5>`;
+      const title = fmtDateTime(d.created_at || d.form?.created_at);
+      let html = `<h5 class="mb-2">${title || ('Prédiction #' + d.id.slice(0,8))}</h5>`;
       html += `<p><strong>k :</strong> ${d.k} | <strong>Modèle :</strong> ${d.model_version} | <strong>Latence :</strong> ${d.latency_ms ?? "–"} ms</p>`;
 
       // Formulaire soumis
@@ -113,8 +129,8 @@
 
       html += `<h6>Items recommandés :</h6><div class="list-group" id="itemsList">`;
       items.forEach(it => {
-        const name   = it?.details?.nom ?? `#${it.etab_id}`;
-        const rating = (it?.details && typeof it.details.rating === 'number') ? ` — ⭐ ${it.details.rating.toFixed(1)}` : '';
+        const name   = it?.name?? `#${it.etab_id}`;
+        const rating = (it?.details && typeof it.rating === 'number') ? ` —  ${it.details.rating.toFixed(1)}` : '';
         const score  = Number(it.score).toFixed(3);
         html += `
           <div class="list-group-item list-group-item-action bg-dark text-white border-secondary result-item"
@@ -126,48 +142,37 @@
 
       body.innerHTML = html;
 
-      // Enrichissement si pas d'items_rich
-      if (!d.items_rich || !d.items_rich.length) {
-        try {
-          const listEl = body.querySelector('#itemsList');
-          const details = await Promise.all(
-            (d.items || []).map(it =>
-              authFetch(`/restaurant/${encodeURIComponent(it.etab_id)}`)
-                .then(r => r.ok ? r.json() : null)
-                .catch(() => null)
-            )
-          );
-          details.forEach((info, idx) => {
-            if (!info) return;
-            const el = listEl?.children?.[idx];
-            if (!el) return;
-            const rank  = d.items[idx].rank;
-            const score = Number(d.items[idx].score).toFixed(3);
-            const rating = (typeof info.rating === 'number') ? ` — ⭐ ${info.rating.toFixed(1)}` : '';
-            el.innerHTML = `#${rank} – <strong>${info.nom || ('#' + d.items[idx].etab_id)}</strong>${rating} (Score ${score})`;
-          });
-        } catch {}
-      }
-
-      // bouton feedback
+      // bouton feedback → fermer la modale prédiction avant d’ouvrir la modale feedback
       const addBtn = document.getElementById("addFeedbackBtn");
       if (addBtn) {
         addBtn.addEventListener("click", () => {
+          const feedbackEl = document.getElementById("feedbackModal");
           document.getElementById("prediction-id").value = d.id;
-          new bootstrap.Modal(document.getElementById("feedbackModal")).show();
+
+          const predModal = bootstrap.Modal.getOrCreateInstance(predEl);
+          predModal?.hide();
+          setTimeout(() => {
+            new bootstrap.Modal(feedbackEl).show();
+          }, 200);
         });
       }
 
-      // clic items → détail restaurant
+      // clic item → fermer la modale prédiction avant d’ouvrir le détail resto
       $all(".result-item", body).forEach(el => {
         el.addEventListener("click", () => {
           const id = el.dataset.etabId;
           if (!id) return;
-          if (typeof window.chargerDetail === "function") {
-            window.chargerDetail(id); // réutilise predict.js si présent
-          } else {
-            chargerDetailLocal(id);   // fallback
-          }
+
+          const predModal = bootstrap.Modal.getOrCreateInstance(predEl);
+          predModal?.hide();
+
+          setTimeout(() => {
+            if (typeof window.chargerDetail === "function") {
+              window.chargerDetail(id);
+            } else {
+              chargerDetailLocal(id);
+            }
+          }, 200);
         });
       });
 
@@ -184,7 +189,8 @@
     const bodyEl  = document.getElementById("detailModalBody");
     titleEl.textContent = "Restaurant";
     bodyEl.innerHTML = '<p class="text-muted">Chargement…</p>';
-    new bootstrap.Modal(modalEl).show();
+    const m = new bootstrap.Modal(modalEl);
+    m.show();
 
     try {
       const r = await authFetch(`/restaurant/${encodeURIComponent(etabId)}`);
@@ -199,6 +205,7 @@
       html += `<p><strong>Site :</strong> ${d.site_web ? `<a href="${d.site_web}" target="_blank">${d.site_web}</a>` : "—"}</p>`;
       html += `<p><strong>Note :</strong> ${typeof d.rating === "number" ? `${d.rating.toFixed(1)}/5` : "—"}</p>`;
       html += `<p><strong>Niveau de prix :</strong> ${d.price_level ? "€".repeat(d.price_level) : "—"}</p>`;
+
       if (d.horaires) {
         if (typeof d.horaires === "string") {
           html += `<div class="mb-2"><strong>Horaires :</strong><br>${d.horaires}</div>`;
@@ -233,19 +240,15 @@
         try {
           const rr = await authFetch(`/restaurant/${encodeURIComponent(etabId)}/reviews`);
           const reviews = rr.ok ? await rr.json() : [];
-          if (!reviews.length) {
-            container.innerHTML = '<p class="text-muted">Aucun avis.</p>';
-          } else {
-            container.innerHTML = reviews.map(rv => {
-              const date = rv.date ? rv.date.slice(0,10) : "";
-              const note = typeof rv.rating === "number" ? `${rv.rating}/5` : "";
-              const comment = rv.comment || rv.original_text || "";
-              return `<div class="border-top border-secondary pt-2 mt-2">
-                <small class="text-muted">${date} — Note ${note}</small><br>
-                <span>${comment}</span>
-              </div>`;
-            }).join("");
-          }
+          container.innerHTML = reviews.length ? reviews.map(rv => {
+            const date = rv.date ? rv.date.slice(0,10) : "";
+            const note = typeof rv.rating === "number" ? `${rv.rating}/5` : "";
+            const comment = rv.comment || rv.original_text || "";
+            return `<div class="border-top border-secondary pt-2 mt-2">
+              <small class="text-muted">${date} — Note ${note}</small><br>
+              <span>${comment}</span>
+            </div>`;
+          }).join("") : '<p class="text-muted">Aucun avis.</p>';
         } catch (e) {
           container.innerHTML = '<p class="text-danger">Erreur chargement avis.</p>';
           console.error(e);
@@ -258,7 +261,7 @@
     }
   }
 
-  // -------- Feedback depuis l’historique
+  // -------- Feedback depuis l’historique (form global)
   (function attachFeedbackHandler(){
     const form = document.getElementById("feedback-form");
     if (!form) return;
@@ -285,13 +288,10 @@
           body: JSON.stringify(payload)
         });
 
-        // Récupérer le corps si possible
         let data = {};
         try { data = await r.json(); } catch {}
 
-        // Cas "déjà existant" géré par le backend (409 ou message)
         if (r.status === 409 || (data && typeof data.detail === "string" && data.detail.includes("déjà existant"))) {
-          // On ferme la modale et on recharge la page (l’état sera à jour)
           bootstrap.Modal.getInstance(document.getElementById("feedbackModal"))?.hide();
           window.location.reload();
           return;
@@ -302,7 +302,6 @@
           throw new Error(`HTTP ${r.status}${det}`);
         }
 
-        // Succès : fermer, reset, recharger la page
         bootstrap.Modal.getInstance(document.getElementById("feedbackModal"))?.hide();
         document.getElementById("rating").value = "";
         document.getElementById("comment").value = "";
@@ -317,13 +316,24 @@
     });
   })();
 
-  // -------- Clic sur une carte historique → ouvrir détail
+  // -------- Clic sur une carte historique → ouvrir détail prédiction
   document.addEventListener("click", (e) => {
     const card = e.target.closest(".pred-item");
     if (!card) return;
     openPredDetail(card.dataset.id);
   });
 
+  // -------- Cleanup global (modales)
+  document.addEventListener("hidden.bs.modal", () => {
+    if (!document.querySelector(".modal.show")) {
+      document.querySelectorAll(".modal-backdrop").forEach(b => b.remove());
+      document.body.classList.remove("modal-open");
+      document.body.style.removeProperty("padding-right");
+      document.body.style.removeProperty("overflow");
+    }
+  });
+
   // -------- Init
   document.addEventListener("DOMContentLoaded", loadHistory);
 })();
+

@@ -6,7 +6,6 @@
 <div class="container py-4">
   <h1 class="h4 mb-3">Explorer les restaurants</h1>
 
-  <!-- Formulaire de filtres -->
   <form id="filter-form" class="row g-3 align-items-end">
     <div class="col-12 col-md-3">
       <label for="search" class="form-label">Recherche (nom)</label>
@@ -83,7 +82,6 @@
 
   <hr class="mt-4 mb-3">
 
-  <!-- Tableau des résultats -->
   <div class="table-responsive">
     <table class="table table-dark table-striped align-middle mb-0" id="data-table">
       <thead>
@@ -100,7 +98,6 @@
   <div id="table-info" class="small text-muted mt-2"></div>
 </div>
 
-<!-- Modale détails restaurant (réutilisée par predict.js) -->
 <div class="modal fade" id="detailModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content bg-dark text-white">
@@ -109,7 +106,6 @@
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body" id="detailModalBody">
-        <!-- Le contenu est injecté par le JS (soit chargerDetail de predict.js, soit fallback local) -->
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>

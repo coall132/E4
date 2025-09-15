@@ -7,12 +7,10 @@
   <h1 class="h4 mb-3">Nouvelle prédiction</h1>
 
   <form id="predict-form" class="row g-3">
-    <!-- Code postal facultatif -->
     <div class="col-6 col-md-4">
       <label for="cp" class="form-label">Code postal </label>
       <input type="text" id="cp" class="form-control" placeholder="Ex : 37000" value="37000">
     </div>
-    <!-- Niveau de prix facultatif -->
     <div class="col-6 col-md-4">
       <label for="price" class="form-label">Niveau de prix </label>
       <select id="price" class="form-select">
@@ -22,18 +20,15 @@
         <option value="4">€€€€</option>
       </select>
     </div>
-    <!-- Nombre d’items -->
     <div class="col-12 col-md-4">
       <label for="k" class="form-label">Nombre d’items</label>
       <input type="number" id="k" class="form-control" min="1" max="50" value="3">
       <div class="form-text">Laissez vide pour la valeur par défaut.</div>
     </div>
-    <!-- Description -->
     <div class="col-12">
       <label for="desc" class="form-label">Description (facultatif)</label>
       <textarea id="desc" class="form-control" rows="3" placeholder="Vos envies…"></textarea>
     </div>
-    <!-- Options -->
     <div class="col-12">
       <label for="opts" class="form-label">Options souhaitées (facultatif)</label>
       <select id="opts" class="form-select" multiple size="8">
@@ -52,7 +47,6 @@
         <option value="servesDinner">Dîner</option>
       </select>
     </div>
-    <!-- Date/heure -->
     <div class="col-12 col-md-6">
       <label for="datetime" class="form-label">Date et heure</label>
       <input type="datetime-local" id="datetime" class="form-control">
@@ -63,15 +57,12 @@
     </div>
   </form>
 
-  <!-- Résultats -->
   <div id="predict-result" class="my-4"></div>
 
-  <!-- Bouton Feedback -->
   <div id="feedback-button-wrapper" class="my-3 d-none">
     <button id="open-feedback-btn" type="button" class="btn btn-outline-primary">Laisser un avis</button>
   </div>
 
-  <!-- Pop-up Feedback (inchangé) -->
   <div class="modal fade" id="feedbackModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
       <form class="modal-content" id="feedback-form">
@@ -93,7 +84,6 @@
     </div>
   </div>
 
-  <!-- Modale Détails -->
   <div class="modal fade" id="detailModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
       <div class="modal-content bg-dark text-white">
@@ -102,7 +92,6 @@
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body" id="detailModalBody">
-          <!-- Contenu chargé par JavaScript -->
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>

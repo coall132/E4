@@ -196,3 +196,24 @@ def _pricelevel_to_int(pl):
         1: 1, 2: 2, 3: 3, 4: 4,
     }
     return mapping.get(str(pl), None)
+
+def _dedupe_horaires(h):
+    # h peut être un dict {jour: [segments...]}, une liste, ou une chaîne.
+    if isinstance(h, dict):
+        out = {}
+        for j, segs in (h or {}).items():
+            seen, uniq = set(), []
+            for s in (segs or []):
+                if s not in seen:
+                    seen.add(s)
+                    uniq.append(s)
+            out[j] = uniq
+        return out
+    if isinstance(h, list):
+        seen, uniq = set(), []
+        for s in h:
+            if s not in seen:
+                seen.add(s)
+                uniq.append(s)
+        return uniq
+    return h

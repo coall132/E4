@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Security, status, Query, Request, Response
+from fastapi import FastAPI, Depends, HTTPException, Security, status, Query, Request, Response,Body
 from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
@@ -358,7 +358,7 @@ def issue_token(API_key_in: Optional[str] = Security(api_key_header), db: Sessio
     description=("Calcule un top-k d’établissements en fonction du formulaire utilisateur.\n\n"
                  "- `use_ml=true` active le modèle ML si disponible, sinon fallback proxy.\n"
                  "- `k` borné à [1, 50]."),
-    response_model=schema.Prediction,  
+    response_model=schema.PredictionResponse,  
     response_model_exclude_none=True,
     responses={400: {"description": "Entrée invalide"},
                401: {"description": "Non autorisé (Bearer manquant/erroné)"},
@@ -570,30 +570,31 @@ async def login_for_web_access_token(request: Request,db: Session = Depends(get_
 
 
 @limiter.limit("15/minute; 2/10second")
-@app.post("/users", response_model=schema.UserOut, tags=["Auth"],openapi_extra={"security": []})
-async def register_user(request: Request, db: Session = Depends(get_db)):
-    try:
-        data = await request.json()
-    except Exception:
-        raise HTTPException(400, "Corps JSON invalide ou manquant.")
+@app.post("/users", response_model=schema.UserOut, tags=["Auth"], openapi_extra={"security": []})
+async def register_user(request: Request,db: Session = Depends(get_db),form: Optional[schema.RegisterIn] = Body(None)):
+    if form is not None:
+        data = form.model_dump(exclude_unset=True, by_alias=False)
+        cf_token = form.cf_turnstile_response or form.captcha_token
+    else:
+        try:
+            data = await request.json()
+        except Exception:
+            raise HTTPException(400, "Corps JSON invalide ou manquant.")
+        cf_token = (data.pop("cf-turnstile-response", None)
+                    or data.pop("captcha_token", None))
 
-    # Récupérer le token Turnstile, quel que soit le nom de champ que tu envoies
-    cf_token = (data.pop("cf-turnstile-response", None)
-                or data.pop("captcha_token", None))
-    if not cf_token and BYPASS==0:
-        raise HTTPException(400, "Vérification anti-robot manquante.")
-
-    ok, _ = await verify_turnstile(cf_token, _client_ip(request))
-    if not ok and BYPASS==0:
-        raise HTTPException(400, "CAPTCHA failed")
-
+    dev_bypass = int(os.getenv("TURNSTILE_DEV_BYPASS", "0"))
+    if dev_bypass == 0:
+        if not cf_token:
+            raise HTTPException(400, "Vérification anti-robot manquante.")
+        ok, _ = await verify_turnstile(cf_token, _client_ip(request))
+        if not ok:
+            raise HTTPException(400, "CAPTCHA failed")
     try:
         user_in = schema.UserCreate(**data)
     except ValidationError as e:
-        # Renvoie un 422 propre si les champs user sont invalides
         raise HTTPException(status_code=422, detail=e.errors())
 
-    # Unicité / création
     if CRUD.get_user_by_username(db, username=user_in.username):
         raise HTTPException(409, "Ce nom d'utilisateur est déjà pris.")
     existing = CRUD.get_user_by_email(db, email=user_in.email)
@@ -700,7 +701,7 @@ def restaurant_detail(etab_id: int, db: Session = Depends(get_db)):
         "longitude": etab.longitude,
     }
 
-@app.get("/restaurant/{etab_id}/reviews", tags=["ui"])
+@app.get("/restaurant/{etab_id}/reviews", tags=["ui"], include_in_schema=False)
 def restaurant_reviews(etab_id: int, db: Session = Depends(get_db)):
     rows = (
         db.query(models.Review)
@@ -719,31 +720,21 @@ def restaurant_reviews(etab_id: int, db: Session = Depends(get_db)):
         for r in rows
     ]
 
-@app.get("/history/predictions", tags=["ui"])
-def history_predictions(
-    skip: int = 0,
-    limit: int = 30,
-    db: Session = Depends(get_db),
-    user_id: int = Depends(CRUD.current_user_id),
-):
-    rows = (
-        db.query(models.Prediction)
-        .options(
-            selectinload(models.Prediction.items),
-            selectinload(models.Prediction.form),  # pour accéder au formulaire
-        )
+@app.get("/history/predictions", tags=["ui"],include_in_schema=False)
+def history_predictions(skip: int = 0,limit: int = 30,db: Session = Depends(get_db),user_id: int = Depends(CRUD.current_user_id)):
+    rows = (db.query(models.Prediction).options(
+                selectinload(models.Prediction.items),
+                selectinload(models.Prediction.form),)
         .filter(models.Prediction.user_id == user_id)
-        .order_by(models.Prediction.id.desc())
+        .order_by(models.Prediction.created_at.desc())  # <= tri croissant
         .offset(skip)
         .limit(limit)
-        .all()
-    )
+        .all())
 
     def summarize_form(form):
         if not form:
             return {}
-        return {
-            "created_at": form.created_at.isoformat() if getattr(form, "created_at", None) else None,
+        return {"created_at": form.created_at.isoformat() if getattr(form, "created_at", None) else None,
             "price_level": form.price_level,
             "city": form.city,
             "open": form.open,
@@ -760,6 +751,7 @@ def history_predictions(
             "model_version": p.model_version,
             "latency_ms": p.latency_ms,
             "items_count": len(p.items),
+            "created_at": p.created_at.isoformat() if getattr(p, "created_at", None) else None, 
             "form": summarize_form(p.form),
             "feedback": {
                 "rating": fb.rating if fb else None,
@@ -768,27 +760,27 @@ def history_predictions(
         })
     return out
 
-@app.get("/history/prediction/{pred_id}", tags=["ui"])
-def get_prediction_detail(pred_id: str, db: Session = Depends(get_db), user_id: int = Depends(CRUD.current_user_id)):
-    # Cast UUID proprement pour Postgres UUID
+@app.get("/history/prediction/{pred_id}", tags=["ui"], include_in_schema=False)
+def get_prediction_detail(pred_id: str,db: Session = Depends(get_db),user_id: int = Depends(CRUD.current_user_id),):
     try:
         pred_uuid = uuid.UUID(pred_id)
     except Exception:
         raise HTTPException(400, "pred_id invalide")
 
-    pred = (
-        db.query(models.Prediction)
+    pred = (db.query(models.Prediction)
         .options(
             selectinload(models.Prediction.items),
-            selectinload(models.Prediction.form),
-        )
-        .filter(models.Prediction.id == pred_uuid, models.Prediction.user_id == user_id)
-        .first()
-    )
+            selectinload(models.Prediction.form),)
+        .filter(models.Prediction.id == pred_uuid,
+            models.Prediction.user_id == user_id).first())
     if not pred:
         raise HTTPException(404, "Prédiction introuvable")
 
-    fb = db.query(models.Feedback).filter(models.Feedback.prediction_id == pred_uuid).first()
+    fb = (
+        db.query(models.Feedback)
+        .filter(models.Feedback.prediction_id == pred_uuid)
+        .first()
+    )
 
     form = pred.form
     form_json = {
@@ -800,57 +792,65 @@ def get_prediction_detail(pred_id: str, db: Session = Depends(get_db), user_id: 
         "description": form.description if form else None,
     }
 
+    etab_ids = [itm.etab_id for itm in pred.items]
+    name_map = {}
+    if etab_ids:
+        rows = (
+            db.query(models.Etablissement.id_etab, models.Etablissement.nom)
+            .filter(models.Etablissement.id_etab.in_(etab_ids))
+            .all())
+
+        name_map = {row[0]: row[1] for row in rows}
+
+    items_out = [
+        {"rank": itm.rank,
+        "etab_id": itm.etab_id,
+        "score": float(itm.score),
+        "name": name_map.get(itm.etab_id),}
+        for itm in sorted(pred.items, key=lambda i: i.rank)]
+
     return {
         "id": str(pred.id),
+        "created_at": pred.created_at.isoformat() if getattr(pred, "created_at", None) else None,
         "k": pred.k,
         "model_version": pred.model_version,
         "latency_ms": pred.latency_ms,
         "form": form_json,
         "feedback": {
             "rating": fb.rating if fb else None,
-            "comment": fb.comment if fb else None,
-        },
-        "items": [
-            {"rank": itm.rank, "etab_id": itm.etab_id, "score": float(itm.score)}
-            for itm in sorted(pred.items, key=lambda i: i.rank)
-        ],
-    }
+            "comment": fb.comment if fb else None},"items": items_out,}
+
 
 @app.get("/ui/api/restaurants", tags=["ui"])
-def list_restaurants(q: Optional[str] = None,city: Optional[str] = None,price_level: Optional[int] = Query(None, ge=1, le=4),
-    open_day: Optional[str] = None,options: Optional[List[str]] = Query(None),sort_by: Optional[str] = None,               
-    sort_dir: Optional[str] = "asc",skip: int = 0,limit: int = 50,db: Session = Depends(get_db)):
+def list_restaurants(q: Optional[str] = None,city: Optional[str] = None,price_level: Optional[int] = Query(None, ge=1, le=4),open_day: Optional[str] = None,
+    options: Optional[List[str]] = Query(None),sort_by: Optional[str] = None,sort_dir: Optional[str] = "asc",skip: int = 0,limit: int = 50,
+    db: Session = Depends(get_db)):
 
     q0 = db.query(models.Etablissement)
 
-    # -- jointures facultatives selon les filtres
-    joined_options = False
-    if options:
-        if len(options) == 1 and isinstance(options[0], str) and "," in options[0]:
-            options = [s for s in options[0].split(",") if s]
-        q0 = q0.join(models.Options)
-        joined_options = True
+    # --- normaliser "options" (CSV accepté) ---
+    if options and len(options) == 1 and isinstance(options[0], str) and "," in options[0]:
+        options = [s for s in options[0].split(",") if s]
 
+    # --- joins pour les filtres ---
+    joined_opts = False
+    if options:
+        q0 = q0.join(models.Options)
+        joined_opts = True
     if open_day:
         q0 = q0.join(models.OpeningPeriod)
 
-    # -- filtres
+    # --- filtres ---
     if q:
-        pattern = f"%{q.lower()}%"
-        q0 = q0.filter(models.Etablissement.nom.ilike(pattern))
-
+        q0 = q0.filter(models.Etablissement.nom.ilike(f"%{q.lower()}%"))
     if city:
         q0 = q0.filter(models.Etablissement.adresse.ilike(f"%{city}%"))
-
     if price_level:
-        # priceLevel est une chaîne dans E1 -> comparer à str
         q0 = q0.filter(models.Etablissement.priceLevel == str(price_level))
-
     if options:
         for opt in options:
             if hasattr(models.Options, opt):
                 q0 = q0.filter(getattr(models.Options, opt) == True)
-
     if open_day:
         jours = {
             "lundi": 1, "mardi": 2, "mercredi": 3, "jeudi": 4,
@@ -862,17 +862,21 @@ def list_restaurants(q: Optional[str] = None,city: Optional[str] = None,price_le
         if d is not None:
             q0 = q0.filter(models.OpeningPeriod.open_day == d)
 
-    # -- dédup ID via sous-requête robuste (évite doublons avec JOIN)
+    # --- dédup via sous-requête ---
     ids_subq = q0.with_entities(models.Etablissement.id_etab).distinct().subquery()
-
     total = db.query(ids_subq).count()
 
+    # --- requête finale + eager loading des relations ---
     rows_q = (
         db.query(models.Etablissement)
         .join(ids_subq, ids_subq.c.id_etab == models.Etablissement.id_etab)
+        .options(
+            selectinload(models.Etablissement.options),
+            selectinload(models.Etablissement.opening_periods),
+        )
     )
 
-    # -- TRI (nom / rating / prix)
+    # --- tri ---
     dir_desc = (str(sort_dir).lower() == "desc")
     if sort_by in ("nom", "rating", "price", "price_level"):
         if sort_by == "nom":
@@ -880,53 +884,67 @@ def list_restaurants(q: Optional[str] = None,city: Optional[str] = None,price_le
         elif sort_by == "rating":
             col = models.Etablissement.rating
         else:
-            # priceLevel est une chaîne -> CAST en int pour trier correctement
             col = cast(models.Etablissement.priceLevel, Integer)
-
-        order_expr = col.desc() if dir_desc else col.asc()
         try:
-            # Postgres: placer les NULL en fin pour un rendu propre
-            order_expr = order_expr.nulls_last()
+            order_expr = (col.desc() if dir_desc else col.asc()).nulls_last()
         except Exception:
-            pass
-
+            order_expr = col.desc() if dir_desc else col.asc()
         rows_q = rows_q.order_by(order_expr, models.Etablissement.id_etab.asc())
     else:
-        # ordre par défaut stable
         rows_q = rows_q.order_by(models.Etablissement.id_etab.asc())
 
     rows = rows_q.offset(skip).limit(limit).all()
 
-    # -- rendu
+    # --- helpers rendu ---
+    opt_fields = [
+        "allowsDogs","delivery","goodForChildren","goodForGroups",
+        "goodForWatchingSports","outdoorSeating","reservable","restroom",
+        "servesVegetarianFood","servesBrunch","servesBreakfast",
+        "servesDinner","servesLunch",
+    ]
+
+    def build_options_map(opt_row) -> dict:
+        out = {}
+        if not opt_row:
+            # renvoyer toutes les clés à False
+            for f in opt_fields: out[f] = False
+            return out
+        for f in opt_fields:
+            val = getattr(opt_row, f, None)
+            out[f] = bool(val) if val is not None else False
+        return out
+
+    def options_true_list(opt_row) -> list[str]:
+        if not opt_row: return []
+        return [f for f in opt_fields if getattr(opt_row, f, None)]
+
+    # --- rendu complet (comme /restaurant/{id}) ---
     results = []
     for e in rows:
-        # options résumées si jointes (accès via relation)
-        opts = {}
-        if joined_options and e.options:
-            for field in [
-                "allowsDogs","delivery","goodForChildren","goodForGroups",
-                "goodForWatchingSports","outdoorSeating","reservable","restroom",
-                "servesVegetarianFood","servesBrunch","servesBreakfast",
-                "servesDinner","servesLunch"
-            ]:
-                val = getattr(e.options, field, None)
-                if val is not None:
-                    opts[field] = bool(val)
-
-        # price_level (cast sûr)
-        price_lvl = None
         try:
-            price_lvl = int(e.priceLevel) if e.priceLevel is not None else None
+            price_lvl_int = utils._pricelevel_to_int(e.priceLevel)
         except Exception:
-            price_lvl = None
+            price_lvl_int = None
+
+        horaires_fmt = utils._format_opening_periods(e.opening_periods or [])
+        opts_map = build_options_map(e.options)
 
         results.append({
             "id": e.id_etab,
             "nom": e.nom,
+            "adresse": e.adresse,
+            "telephone": e.internationalPhoneNumber,
+            "site_web": e.websiteUri,
+            "description": e.description or e.editorialSummary_text,
             "rating": float(e.rating) if e.rating is not None else None,
-            "price_level": price_lvl,
-            # on ne renvoie pas l'adresse si tu n’en veux pas côté UI
-            "options": opts,
+            "price_level": price_lvl_int,
+            "start_price": e.start_price,
+            "end_price": e.end_price,
+            "latitude": e.latitude,
+            "longitude": e.longitude,
+            "options": opts_map,                 
+            "options_actives": options_true_list(e.options),  
+            "horaires": horaires_fmt,
         })
 
     return {"total": total, "items": results}

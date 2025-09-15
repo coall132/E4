@@ -34,7 +34,6 @@
     <div class="invalid-feedback">Veuillez renseigner un mot de passe.</div>
   </div>
 
-  <!-- Widget Turnstile (Cloudflare) -->
   <div class="mb-3">
     <div
       class="cf-turnstile"
@@ -57,11 +56,9 @@
 {% endblock %}
 
 {% block scripts %}
-<!-- API Turnstile -->
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 
 <script>
-/* Validation Bootstrap simple */
 (() => {
   'use strict';
   const forms = document.querySelectorAll('.needs-validation');
@@ -84,7 +81,6 @@ function showMsg(text, type = "info") {
 }
 
 function setCookie(name, value, maxAgeSec) {
-  // Ajoute Secure si HTTPS
   const isHttps = location.protocol === 'https:';
   document.cookie =
     `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAgeSec}; SameSite=Lax${isHttps ? '; Secure' : ''}`;
@@ -96,7 +92,6 @@ form.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!form.checkValidity()) return;
 
-  // Récupération du token Turnstile injecté en input hidden par le widget
   const tsInput = form.querySelector('input[name="cf-turnstile-response"]');
   const tsToken = tsInput ? tsInput.value : '';
   if (!tsToken) {
@@ -110,7 +105,6 @@ form.addEventListener('submit', async (e) => {
   const password = document.getElementById('password').value || '';
 
   try {
-    // Corps pour OAuth2PasswordRequestForm + token Turnstile
     const body = new URLSearchParams({
       username,
       password,
@@ -124,7 +118,6 @@ form.addEventListener('submit', async (e) => {
     });
 
     if (!response.ok) {
-      // Reset du challenge côté client en cas d’échec
       if (window.turnstile) turnstile.reset();
 
       let detail = `HTTP ${response.status}`;
@@ -146,16 +139,13 @@ form.addEventListener('submit', async (e) => {
     const token = data && data.access_token;
     if (!token) throw new Error("Réponse invalide du serveur : access_token manquant.");
 
-    // Stockage pour les appels fetch côté client
     localStorage.setItem('ACCESS_TOKEN', token);
 
-    // Cookies lus par ton middleware / pages (auth_token et ACCESS_TOKEN)
     const maxAge = data.expires_at ? Math.max(1, Math.floor(data.expires_at - (Date.now() / 1000))) : 86400;
     setCookie('auth_token', token, maxAge);
     setCookie('ACCESS_TOKEN', token, maxAge);
 
     showMsg('Connecté ! Redirection…', 'success');
-    // Redirection vers l’accueil
     window.location.replace('/');
   } catch (err) {
     showMsg(`Erreur : ${err.message}`, 'danger');

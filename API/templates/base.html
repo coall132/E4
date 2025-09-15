@@ -3,14 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RestauReco</title>
+  <title>RestoReco</title>
 
-  <!-- Fonts -->
   <link href="https://fonts.googleapis.com" rel="preconnect">
   <link href="https://fonts.gstatic.com" rel="preconnect" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@100;300;400;500;700;900&family=Raleway:wght@100;200;300;400;500;600;700;800;900&family=Nunito+Sans:wght@200;300;400;600;700;800;900&display=swap" rel="stylesheet">
 
-  <!-- Strategy CSS -->
   <link rel="stylesheet" href="{{ url_for('strategy', path='assets/vendor/bootstrap/css/bootstrap.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('strategy', path='assets/vendor/bootstrap-icons/bootstrap-icons.css') }}">
   <link rel="stylesheet" href="{{ url_for('strategy', path='assets/vendor/aos/aos.css') }}">
@@ -18,15 +16,12 @@
   <link rel="stylesheet" href="{{ url_for('strategy', path='assets/vendor/glightbox/css/glightbox.min.css') }}">
   <link rel="stylesheet" href="{{ url_for('strategy', path='assets/css/main.css') }}">
 
-  <!-- Tiny override to keep the 2 auth buttons close together -->
   <style>
     .auth-actions { display: flex; align-items: center; gap: .5rem; }
-    /* neutralise toute marge gauche automatique éventuelle du thème */
     .auth-actions .btn-getstarted { margin-left: 0 !important; }
   </style>
 </head>
 <body>
-  <!-- Header -->
   <header id="header" class="header d-flex align-items-center">
     <div class="header-container container-fluid container-xl position-relative d-flex align-items-center justify-content-between">
       <a href="/" class="logo d-flex align-items-center me-auto me-xl-0">
@@ -43,7 +38,6 @@
         <i class="mobile-nav-toggle d-xl-none bi bi-list"></i>
       </nav>
 
-      <!-- Group the two buttons so justify-content-between doesn't push them apart -->
       <div class="auth-actions">
         <a class="btn-getstarted" href="/register">S'inscrire</a>
         <a class="btn-getstarted" href="/login">Se connecter</a>
@@ -52,17 +46,15 @@
     </div>
   </header>
 
-  <!-- Main -->
   <main class="container my-5 flex-fill">
     {% block content %}{% endblock %}
   </main>
 
-  <!-- Footer -->
+
   <footer class="bg-dark text-white text-center py-3 mt-auto">
-    © {{ now().year if false else '' }} RestauReco — Démo
+    © {{ now().year if false else '' }} RestoReco — Démo
   </footer>
 
-  <!-- Strategy JS -->
   <script src="{{ url_for('strategy', path='assets/vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
   <script src="{{ url_for('strategy', path='assets/vendor/aos/aos.js') }}"></script>
   <script src="{{ url_for('strategy', path='assets/vendor/swiper/swiper-bundle.min.js') }}"></script>

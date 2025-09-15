@@ -68,6 +68,7 @@ class Prediction(BaseModel):
     latency_ms: Optional[int] = None
     status: Optional[str] = "ok"
     items: List[PredictionItem] = []
+    created_at: Optional[datetime] = None
 
 class PredictionResponse(Prediction):
     prediction_id: UUID
@@ -176,6 +177,11 @@ class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_at: int
+
+class RegisterIn(UserCreate):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    captcha_token: Optional[str] = None
+    cf_turnstile_response: Optional[str] = Field(default=None, alias="cf-turnstile-response")
     
 @dataclass
 class MLState:

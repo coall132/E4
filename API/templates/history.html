@@ -6,12 +6,10 @@
 <div class="container py-4">
   <h1 class="h4 mb-3">Historique des prédictions</h1>
 
-  <!-- Liste des prédictions -->
   <div id="history-list">
     <p class="text-muted">Chargement…</p>
   </div>
 
-  <!-- Modale : détail d'une prédiction -->
   <div class="modal fade" id="predDetailModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
       <div class="modal-content bg-dark text-white">
@@ -20,7 +18,6 @@
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body" id="predDetailBody">
-          <!-- contenu dynamique -->
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
@@ -29,7 +26,6 @@
     </div>
   </div>
 
-  <!-- Modale : détail restaurant (réutilisée par history.js si predict.js n'est pas chargé) -->
   <div class="modal fade" id="detailModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
       <div class="modal-content bg-dark text-white">
@@ -38,7 +34,6 @@
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body" id="detailModalBody">
-          <!-- rempli dynamiquement -->
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
@@ -47,7 +42,6 @@
     </div>
   </div>
 
-  <!-- Modale feedback (même IDs que sur /predict pour réutiliser le code) -->
   <div class="modal fade" id="feedbackModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
       <form class="modal-content" id="feedback-form">
@@ -76,7 +70,6 @@
 {% endblock %}
 
 {% block scripts %}
-<!-- On charge aussi predict.js pour réutiliser chargerDetail/feedback si présent -->
 <script src="{{ url_for('static', path='js/predict.js') }}"></script>
 <script src="{{ url_for('static', path='js/history.js') }}"></script>
 {% endblock %}
