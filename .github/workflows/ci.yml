@@ -41,7 +41,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
         run: pytest -q
 
-  tests-e2e:
+  tests-front:
     needs: tests-api
     runs-on: ubuntu-latest
     permissions: { contents: read }
