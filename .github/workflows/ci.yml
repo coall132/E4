@@ -242,7 +242,7 @@ jobs:
           if-no-files-found: ignore
 
   build-and-push:
-    needs: [tests-api, tests-e2e]
+    needs: [tests-api, tests-front]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
