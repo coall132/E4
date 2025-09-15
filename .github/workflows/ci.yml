@@ -180,7 +180,7 @@ jobs:
         env:
           BASE_URL: ${{ env.BASE_URL }}
           TURNSTILE_DEV_BYPASS: "1"
-        run: npx playwright test --reporter=line
+        run: npx playwright test --reporter=html,line
 
       - name: Upload Playwright HTML report
         if: always()
