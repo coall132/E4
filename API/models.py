@@ -21,7 +21,6 @@ def ensure_ml_schema(engine):
         conn.commit()
 
 def _attach_external_tables(engine):
-    # Reflète la table déjà existante en base dans la metadata des modèles
     Table("etab", Base.metadata, schema="public", autoload_with=engine)
     print("[startup] Attached external table public.etab to metadata")
 

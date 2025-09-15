@@ -293,8 +293,7 @@ def text_features01(df, form, model, k=3, missing_cos01=0.0):
                 vals = [
                     _cos01_safe(r, z)
                     for r in L
-                    if isinstance(r, np.ndarray) and r.ndim == 1 and r.size > 0
-                ]
+                    if isinstance(r, np.ndarray) and r.ndim == 1 and r.size > 0]
                 if vals:
                     k_ = min(k, len(vals))
                     cos_r[i] = float(np.sort(np.asarray(vals, np.float32))[-k_:].mean())
@@ -378,7 +377,6 @@ def build_preproc_for_items(df: pd.DataFrame):
         remainder="drop",
     )
 
-# (optionnel) petites aides ancres/embeds si tu veux conserver le champ q_anchor_* un jour
 def pick_anchors_from_df(df, n=8):
     vecs = [v for v in df.get('desc_embed', []) if isinstance(v, np.ndarray) and v.ndim == 1 and v.size > 0]
     if not vecs:
@@ -399,7 +397,7 @@ def build_item_features_df(df, form, sent_model, include_query_consts=False, anc
         "feat_price":   np.asarray(H["price"],   np.float32),
         "feat_rating":  np.asarray(H["rating"],  np.float32),
         "feat_options": np.asarray(H["options"], np.float32),
-        "feat_text":    np.asarray(H["text"],    np.float32),  # proxy texte (rev/desc mixé)
+        "feat_text":    np.asarray(H["text"],    np.float32), 
         "feat_city":    np.asarray(H["city"],    np.float32),
         "feat_open":    np.asarray(H["open"],    np.float32),
     }
@@ -434,7 +432,6 @@ def build_item_features_df(df, form, sent_model, include_query_consts=False, anc
         cos = np.zeros(len(df), dtype=np.float32)
     data["f_text_desc_cos"] = cos
 
-    # quelques brutes utiles
     for c in ["rating", "priceLevel", "start_price", "latitude", "longitude"]:
         if c in df.columns:
             data[f"raw_{c}"] = df[c].astype(float).to_numpy(dtype=np.float32)

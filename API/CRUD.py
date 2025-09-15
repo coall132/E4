@@ -32,11 +32,11 @@ except:
     from API import benchmark_2_0 as bm
     from API import utils
 
-api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)  # pour /auth/token uniquement
+api_key_header = APIKeyHeader(name="X-API-KEY", auto_error=False)
 http_bearer = HTTPBearer(auto_error=False)
 ph = PasswordHasher(time_cost=2, memory_cost=102400, parallelism=8)
 
-API_STATIC_KEY = os.getenv("API_STATIC_KEY")  # pour échanger contre un token
+API_STATIC_KEY = os.getenv("API_STATIC_KEY") 
 JWT_SECRET = os.getenv("JWT_SECRET")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "15"))
@@ -234,13 +234,12 @@ def _ensure_mlflow():
         mlflow.set_tracking_uri(uri)
         client = MlflowClient(tracking_uri=uri)
 
-        # sonde explicite: force une requête réseau
         client.search_experiments(max_results=1)
 
         exp = client.get_experiment_by_name(exp_name)
         exp_id = exp.experiment_id if exp else client.create_experiment(exp_name)
 
-        mlflow.set_experiment(exp_name)  # fixe l’expé par défaut
+        mlflow.set_experiment(exp_name)  
 
         _MLFLOW_EXP_ID = exp_id
         _MLFLOW_READY = True
@@ -275,7 +274,7 @@ def log_prediction_event(prediction, form_dict, scores, used_ml: bool, latency_m
         return
     with mlflow.start_run(
         run_name=f"predict:{tags['prediction_id']}",
-        experiment_id=_MLFLOW_EXP_ID,          # <-- ici
+        experiment_id=_MLFLOW_EXP_ID,        
         nested=True,
         tags=tags
     ) as run:
@@ -326,7 +325,7 @@ def log_feedback_rating(prediction_id,rating,k= None,model_version= None,user_id
 
     with mlflow.start_run(
         run_name=f"feedback:{prediction_id}",
-        experiment_id=_MLFLOW_EXP_ID,         # <-- ici
+        experiment_id=_MLFLOW_EXP_ID,      
         nested=True
     ):
         mlflow.set_tags({k: v for k, v in tags.items() if v is not None})
@@ -346,7 +345,7 @@ _DAY_FR = {
     4: "Jeudi",
     5: "Vendredi",
     6: "Samedi",
-    0: "Dimanche",   # NOTE: cohérent avec ton mapping existant {0: dimanche, 1: lundi, ...}
+    0: "Dimanche", 
 }
 _DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]  # Lundi → Dimanche
 
@@ -373,11 +372,10 @@ def _price_to_int_and_symbol(v: Optional[str | int | float]) -> (Optional[int], 
     if s in _PRICE_MAP_STR_TO_INT:
         lvl = _PRICE_MAP_STR_TO_INT[s]
         return lvl, "€" * lvl
-    # parfois stocké comme "$", "$$", ...
     if set(s) == {"$"}:
         lvl = len(s)
         return lvl, "€" * lvl
-    # fallback
+
     try:
         lvl = int(s)
         return lvl, ("€" * lvl) if 1 <= lvl <= 4 else None
@@ -402,7 +400,6 @@ def _build_horaires(periods: List[models.OpeningPeriod]) -> List[str]:
         if p.open_day is None or p.close_day is None:
             continue
         if p.open_day != p.close_day:
-            # simplification (même logique que ton code de profil): on ignore les spans multi-jours
             continue
         t1 = _fmt_time(p.open_hour, p.open_minute)
         t2 = _fmt_time(p.close_hour, p.close_minute)
@@ -460,8 +457,8 @@ def get_etablissement_details(db: Session, id_etab: int) -> Dict[str, Any]:
         "site_web": etab.websiteUri,
         "description": desc,
         "rating": etab.rating,
-        "priceLevel": lvl_int,         # niveau numérique si possible (1..4)
-        "priceLevel_symbole": lvl_sym, # "€", "€€", ...
+        "priceLevel": lvl_int,         
+        "priceLevel_symbole": lvl_sym,
         "startPrice": etab.start_price,
         "endPrice": etab.end_price,
         "geo": {"lat": etab.latitude, "lng": etab.longitude},

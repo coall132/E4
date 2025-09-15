@@ -45,7 +45,6 @@
     const titleEl = document.getElementById("detailModalTitle");
     const bodyEl  = document.getElementById("detailModalBody");
 
-    // cleanup global pour éviter la page “bloquée”
     modalEl.addEventListener("hidden.bs.modal", () => {
       if (!document.querySelector(".modal.show")) {
         document.querySelectorAll(".modal-backdrop").forEach(b => b.remove());
@@ -97,7 +96,6 @@
         </tr>
       `).join("");
 
-      // 👉 Attache les clics directement sur les lignes
       tbody.querySelectorAll(".restaurant-row").forEach(tr => {
         tr.addEventListener("click", () => openRestaurantDetail(tr.dataset.id));
       });
@@ -122,7 +120,6 @@
       console.debug("[detail] fetch", url);
       const r = await authFetch(url);
 
-      // On lit d'abord le texte brut pour diagnostiquer les redirections/login HTML
       const raw = await r.text();
       if (!r.ok) {
         bodyEl.innerHTML = `<p class="text-danger">Erreur (HTTP ${r.status}).</p><pre class="small text-muted">${raw.slice(0,500)}</pre>`;
@@ -133,12 +130,10 @@
       try {
         d = JSON.parse(raw);
       } catch {
-        // Souvent : HTML de /login -> on l’affiche en extrait
         bodyEl.innerHTML = `<p class="text-danger">Réponse non-JSON (probable redirection ou erreur).</p><pre class="small text-muted">${raw.slice(0,500)}</pre>`;
         return;
       }
 
-      // Sécurité : vérifie qu’on a bien un objet avec au moins un champ utile
       if (!d || (typeof d !== "object") || (!d.nom && !d.adresse && !d.rating && !d.price_level)) {
         bodyEl.innerHTML = `<p class="text-warning">Aucune donnée détaillée reçue pour l'établissement #${etabId}.</p>`;
         return;
@@ -157,11 +152,9 @@
         if (typeof d.horaires === "string") {
           html += `<div class="mb-2"><strong>Horaires :</strong><br>${d.horaires}</div>`;
         } else if (Array.isArray(d.horaires)) {
-          // liste -> on déduplique
           const uniq = [...new Set(d.horaires)];
           html += `<div class="mb-2"><strong>Horaires :</strong><br>${uniq.join("<br>")}</div>`;
         } else {
-          // objet -> on déduplique par jour
           html += `<div class="mb-2"><strong>Horaires :</strong><br>${
             Object.entries(d.horaires).map(([j, pl]) => {
               const arr = Array.isArray(pl) ? pl : [String(pl)];
@@ -243,13 +236,11 @@
     loadTable(readParamsFromForm());
   }
 
-  // Brancher le submit et première charge
   document.getElementById("filter-form")?.addEventListener("submit", onSubmit);
   document.addEventListener("DOMContentLoaded", () => {
     onSubmit(new Event("submit"));
   });
 
-  // Cleanup global pour toutes les modales
   document.addEventListener("hidden.bs.modal", () => {
     if (!document.querySelector(".modal.show")) {
       document.querySelectorAll(".modal-backdrop").forEach(b => b.remove());

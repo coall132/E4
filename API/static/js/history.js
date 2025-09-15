@@ -16,7 +16,6 @@
   // -------- Date formatter (robuste aux ISO avec timezone)
   function fmtDateTime(iso) {
     if (!iso) return "";
-    // Safari peut être tatillon; si pas d'offset/Z, on ajoute Z
     const hasTz = /[+-]\d\d:\d\d$|Z$/.test(iso);
     const d = new Date(hasTz ? iso : (iso + "Z"));
     if (isNaN(d)) return iso;
@@ -70,7 +69,7 @@
       }
 
       list.innerHTML = data.map(p => {
-        const title = fmtDateTime(p.created_at || p.form?.created_at); // <-- Titre = date/heure
+        const title = fmtDateTime(p.created_at || p.form?.created_at); 
         const fbChip = (p.feedback && p.feedback.rating !== null)
           ? `<span class="badge bg-success">Note ${p.feedback.rating}/5</span>`
           : `<span class="badge bg-secondary">Pas de feedback</span>`;
@@ -113,7 +112,7 @@
       let html = `<h5 class="mb-2">${title || ('Prédiction #' + d.id.slice(0,8))}</h5>`;
       html += `<p><strong>k :</strong> ${d.k} | <strong>Modèle :</strong> ${d.model_version} | <strong>Latence :</strong> ${d.latency_ms ?? "–"} ms</p>`;
 
-      // Formulaire soumis
+
       html += renderFormBlock(d.form);
 
       // Feedback

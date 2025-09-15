@@ -509,7 +509,6 @@ def predict(form: schema.Form,k: int = 10,use_ml: bool = True,user_id: int = Dep
         base["message"] = "N’hésitez pas à donner un feedback (0 à 5) via /feedback en utilisant prediction_id."
         return base
     except Exception as e:
-        # Ce bloc attrapera n'importe quel crash et l'affichera
         print("\n---! ERREUR DANS L'ENDPOINT /predict !---", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         print("-----------------------------------------\n", file=sys.stderr)
@@ -632,7 +631,6 @@ def ui_predict(request: Request):
 
 @app.get("/history", response_class=HTMLResponse, name="history", include_in_schema=False)
 def history_page(request: Request):
-    # exiger l’authentification (sinon rediriger)
     token = request.cookies.get("ACCESS_TOKEN")
     if not token:
         return RedirectResponse(url="/login", status_code=303)
@@ -655,7 +653,6 @@ def restaurant_detail(etab_id: int, db: Session = Depends(get_db)):
     if not etab:
         raise HTTPException(status_code=404, detail="Restaurant introuvable")
 
-    # Options (table 'public.options')
     opt = (
         db.query(models.Options)
         .filter(models.Options.id_etab == etab_id)
@@ -677,7 +674,6 @@ def restaurant_detail(etab_id: int, db: Session = Depends(get_db)):
         "servesLunch": bool(opt.servesLunch) if opt and opt.servesLunch is not None else False,
     }
 
-    # Horaires (table 'public.opening_period')
     periods = (
         db.query(models.OpeningPeriod)
         .filter(models.OpeningPeriod.id_etab == etab_id)
@@ -709,16 +705,8 @@ def restaurant_reviews(etab_id: int, db: Session = Depends(get_db)):
         .order_by(models.Review.publishTime.desc())
         .all()
     )
-    # publishTime est une chaîne chez toi; on la renvoie telle quelle
-    return [
-        {
-            "date": r.publishTime,
-            "rating": float(r.rating) if r.rating is not None else None,
-            "comment": r.original_text,
-            "author": r.author,
-        }
-        for r in rows
-    ]
+    return [{"date": r.publishTime,"rating": float(r.rating) if r.rating is not None else None,
+            "comment": r.original_text,"author": r.author,}for r in rows]
 
 @app.get("/history/predictions", tags=["ui"],include_in_schema=False)
 def history_predictions(skip: int = 0,limit: int = 30,db: Session = Depends(get_db),user_id: int = Depends(CRUD.current_user_id)):
@@ -726,7 +714,7 @@ def history_predictions(skip: int = 0,limit: int = 30,db: Session = Depends(get_
                 selectinload(models.Prediction.items),
                 selectinload(models.Prediction.form),)
         .filter(models.Prediction.user_id == user_id)
-        .order_by(models.Prediction.created_at.desc())  # <= tri croissant
+        .order_by(models.Prediction.created_at.desc())  
         .offset(skip)
         .limit(limit)
         .all())
@@ -828,11 +816,9 @@ def list_restaurants(q: Optional[str] = None,city: Optional[str] = None,price_le
 
     q0 = db.query(models.Etablissement)
 
-    # --- normaliser "options" (CSV accepté) ---
     if options and len(options) == 1 and isinstance(options[0], str) and "," in options[0]:
         options = [s for s in options[0].split(",") if s]
 
-    # --- joins pour les filtres ---
     joined_opts = False
     if options:
         q0 = q0.join(models.Options)
@@ -840,7 +826,6 @@ def list_restaurants(q: Optional[str] = None,city: Optional[str] = None,price_le
     if open_day:
         q0 = q0.join(models.OpeningPeriod)
 
-    # --- filtres ---
     if q:
         q0 = q0.filter(models.Etablissement.nom.ilike(f"%{q.lower()}%"))
     if city:
@@ -862,11 +847,9 @@ def list_restaurants(q: Optional[str] = None,city: Optional[str] = None,price_le
         if d is not None:
             q0 = q0.filter(models.OpeningPeriod.open_day == d)
 
-    # --- dédup via sous-requête ---
     ids_subq = q0.with_entities(models.Etablissement.id_etab).distinct().subquery()
     total = db.query(ids_subq).count()
 
-    # --- requête finale + eager loading des relations ---
     rows_q = (
         db.query(models.Etablissement)
         .join(ids_subq, ids_subq.c.id_etab == models.Etablissement.id_etab)
@@ -876,7 +859,6 @@ def list_restaurants(q: Optional[str] = None,city: Optional[str] = None,price_le
         )
     )
 
-    # --- tri ---
     dir_desc = (str(sort_dir).lower() == "desc")
     if sort_by in ("nom", "rating", "price", "price_level"):
         if sort_by == "nom":
@@ -895,7 +877,6 @@ def list_restaurants(q: Optional[str] = None,city: Optional[str] = None,price_le
 
     rows = rows_q.offset(skip).limit(limit).all()
 
-    # --- helpers rendu ---
     opt_fields = [
         "allowsDogs","delivery","goodForChildren","goodForGroups",
         "goodForWatchingSports","outdoorSeating","reservable","restroom",
@@ -906,7 +887,6 @@ def list_restaurants(q: Optional[str] = None,city: Optional[str] = None,price_le
     def build_options_map(opt_row) -> dict:
         out = {}
         if not opt_row:
-            # renvoyer toutes les clés à False
             for f in opt_fields: out[f] = False
             return out
         for f in opt_fields:
@@ -918,7 +898,6 @@ def list_restaurants(q: Optional[str] = None,city: Optional[str] = None,price_le
         if not opt_row: return []
         return [f for f in opt_fields if getattr(opt_row, f, None)]
 
-    # --- rendu complet (comme /restaurant/{id}) ---
     results = []
     for e in rows:
         try:

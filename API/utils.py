@@ -4,46 +4,6 @@ import numpy as np
 import pandas as pd
 from API import models
 
-def _parse_vec(v: Any):
-    if v is None:
-        return None
-    if isinstance(v, (list, tuple, np.ndarray)):
-        return np.asarray(v, dtype=float)
-    if isinstance(v, (bytes, bytearray)):
-        v = v.decode("utf-8", errors="ignore")
-    if isinstance(v, str):
-        v = v.strip()
-        if not v:
-            return None
-        try:
-            return np.asarray(json.loads(v), dtype=float)
-        except Exception:
-            return None
-    return None
-
-def _parse_mat(m: Any):
-    if m is None:
-        return []
-    if isinstance(m, (bytes, bytearray)):
-        m = m.decode("utf-8", errors="ignore")
-    if isinstance(m, str):
-        m = m.strip()
-        if not m:
-            return []
-        try:
-            m = json.loads(m)
-        except Exception:
-            return []
-    if isinstance(m, (list, tuple)):
-        out = []
-        for row in m:
-            try:
-                out.append(np.asarray(row, dtype=float))
-            except Exception:
-                pass
-        return out
-    return []
-
 def determine_price_level(row):
     if pd.notna(row['start_price']):
         price = row['start_price']
@@ -81,26 +41,6 @@ def calculer_profil_ouverture(row, df_horaires, jours, creneaux):
                 
     return pd.Series(profil)
 
-def _predict_scores(model, X: np.ndarray) -> np.ndarray:
-    try:
-        s = model.decision_function(X)
-        return np.asarray(s, float).ravel()
-    except Exception:
-        pass
-    try:
-        proba = model.predict_proba(X)
-        proba = np.asarray(proba, float)
-        return (proba[:, 1] if proba.ndim == 2 and proba.shape[1] >= 2 else proba.max(axis=1))
-    except Exception:
-        pass
-    pred = model.predict(X)
-    return np.asarray(pred, float).ravel()
-
-def _align_df_to_cols(X_df: pd.DataFrame, feature_cols: List[str]):
-    for c in feature_cols:
-        if c not in X_df.columns:
-            X_df[c] = 0.0
-    return X_df[feature_cols]
 
 def to_np1d(x):
     if isinstance(x, np.ndarray):
@@ -137,83 +77,3 @@ def to_list_np(x):
     return None
 
 
-class _StubSentModel:
-    def __init__(self, dim: int = 1024):
-        self.dim = int(dim)
-
-    def encode(self, texts, normalize_embeddings=True, show_progress_bar=False):
-        if isinstance(texts, str):
-            texts = [texts]
-        # vecteurs nuls de la bonne dimension
-        return [np.zeros(self.dim, dtype=np.float32) for _ in texts]
-
-def _infer_embed_dim(df: pd.DataFrame, default: int = 1024) -> int:
-    # essaie desc_embed, sinon ancres si tu en as, sinon fallback
-    if "desc_embed" in df.columns:
-        for v in df["desc_embed"]:
-            if isinstance(v, np.ndarray) and v.ndim == 1:
-                return int(v.shape[0])
-            
-def _format_opening_periods(periods: list[models.OpeningPeriod]):
-    """
-    Transforme OpeningPeriod en dict {JourFr: 'HH:MM–HH:MM, ...'}
-    NB: on suppose open_day dans [0..6] avec 0=Dimanche (classique Google).
-    """
-    jours_fr = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"]
-    slots: dict[int, list[str]] = {i: [] for i in range(7)}
-
-    def _hhmm(h, m):
-        if h is None or m is None:
-            return None
-        return f"{int(h):02d}:{int(m):02d}"
-
-    for p in periods:
-        od, oh, om = p.open_day, p.open_hour, p.open_minute
-        ch, cm = p.close_hour, p.close_minute
-        start = _hhmm(oh, om)
-        end   = _hhmm(ch, cm)
-        if start and end and od is not None and 0 <= od <= 6:
-            slots[od].append(f"{start}–{end}")
-
-    out = {}
-    for i, plages in slots.items():
-        if plages:
-            out[jours_fr[i]] = ", ".join(plages)
-    return out
-
-def _pricelevel_to_int(pl):
-    """
-    priceLevel est une chaîne chez toi (ex: 'PRICE_LEVEL_MODERATE' ou '2').
-    """
-    if pl is None:
-        return None
-    mapping = {
-        "PRICE_LEVEL_INEXPENSIVE": 1,
-        "PRICE_LEVEL_MODERATE": 2,
-        "PRICE_LEVEL_EXPENSIVE": 3,
-        "PRICE_LEVEL_VERY_EXPENSIVE": 4,
-        "1": 1, "2": 2, "3": 3, "4": 4,
-        1: 1, 2: 2, 3: 3, 4: 4,
-    }
-    return mapping.get(str(pl), None)
-
-def _dedupe_horaires(h):
-    # h peut être un dict {jour: [segments...]}, une liste, ou une chaîne.
-    if isinstance(h, dict):
-        out = {}
-        for j, segs in (h or {}).items():
-            seen, uniq = set(), []
-            for s in (segs or []):
-                if s not in seen:
-                    seen.add(s)
-                    uniq.append(s)
-            out[j] = uniq
-        return out
-    if isinstance(h, list):
-        seen, uniq = set(), []
-        for s in h:
-            if s not in seen:
-                seen.add(s)
-                uniq.append(s)
-        return uniq
-    return h

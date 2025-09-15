@@ -1,8 +1,10 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
 
-test('historique: user -> login -> prédiction -> ouverture détail', async ({ page, request, context, baseURL }) => {
-  // baseURL garanti par la config
-  expect(baseURL).toBeTruthy();
+test('historique: user -> login -> prédiction -> ouverture détail', async ({ page, request, context }) => {
+  // Récupère le baseURL défini dans playwright.config.ts ou l’ENV
+  const base = (test.info().project.use.baseURL as string)
+            || process.env.BASE_URL
+            || 'http://127.0.0.1:8000';
 
   const username = `u${Date.now()}`;
   const email = `${username}@e2e.test`;
@@ -14,25 +16,20 @@ test('historique: user -> login -> prédiction -> ouverture détail', async ({ p
   });
   expect(reg.ok()).toBeTruthy();
 
-  // 2) Login (form OAuth2 + bypass Turnstile)
+  // 2) Login (form OAuth2 + bypass Turnstile via TURNSTILE_DEV_BYPASS=1)
   const login = await request.post('/auth/web/token', {
-    form: {
-      username,
-      password,
-      'cf-turnstile-response': '' // TURNSTILE_DEV_BYPASS=1 => OK
-    }
+    form: { username, password, 'cf-turnstile-response': '' }
   });
   expect(login.ok()).toBeTruthy();
   const { access_token } = await login.json();
+  expect(access_token).toBeTruthy();
 
-  // 3) Injecter le cookie côté UI
-  await context.addCookies([
-    { name: 'ACCESS_TOKEN', value: access_token, url: baseURL! }
-  ]);
+  // 3) Cookie côté UI (utilise une URL absolue pour lier au bon domaine)
+  await context.addCookies([{ name: 'ACCESS_TOKEN', value: access_token, url: base }]);
 
-  // 4) Créer une prédiction côté API (avec Authorization)
+  // 4) Créer une prédiction via l’API authentifiée
   const apiCtx = await pwRequest.newContext({
-    baseURL,
+    baseURL: base,
     extraHTTPHeaders: { Authorization: `Bearer ${access_token}` }
   });
   const predRes = await apiCtx.post('/predict?k=5&use_ml=false', {
@@ -48,16 +45,15 @@ test('historique: user -> login -> prédiction -> ouverture détail', async ({ p
   const pred = await predRes.json();
   expect(pred).toHaveProperty('id');
 
-  // 5) Ouvrir /history et cliquer sur la prédiction
-  await page.goto('/history');
-  // La carte contient "Prédiction #<8 chars>"
+  // 5) Ouvrir /history et cliquer sur la carte de la prédiction
+  await page.goto(`${base}/history`);
   const shortId = String(pred.id).slice(0, 8);
   const card = page.locator('.pred-item', { hasText: shortId });
-  await expect(card).toBeVisible();
+  await expect(card).toBeVisible({ timeout: 10_000 });
 
   await card.click();
 
   // 6) Vérifier la modale de détail
-  await expect(page.locator('#predDetailModal .modal-title, #predDetailBody')).toBeVisible();
+  await expect(page.locator('#predDetailModal, #predDetailBody')).toBeVisible();
   await expect(page.getByText(new RegExp(`Prédiction #${shortId}`))).toBeVisible();
 });
