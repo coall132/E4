@@ -271,6 +271,7 @@ def warmup():
             or "dev"
         )
         if app.state.SENT_MODEL is None:
+            print("dddddddddddddddddddddddddddddddddddddddddd")
             dim = utils._infer_embed_dim(app.state.DF_CATALOG, default=1024)
             app.state.SENT_MODEL = utils._StubSentModel(dim=dim)
             print("Model fake embedding ___________________")

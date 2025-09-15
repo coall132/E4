@@ -16,7 +16,7 @@ import os, mlflow
 from mlflow.tracking import MlflowClient
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import io
-#from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer
 
 try:
     from . import models
@@ -113,8 +113,7 @@ def load_ML():
     state.preproc_factory = bm.make_preproc_final
     state.preproc = bm.preproc
     try:
-        1==2
-        #state.sent_model=SentenceTransformer("BAAI/bge-m3")
+        state.sent_model=SentenceTransformer("BAAI/bge-m3")
     except Exception:
         state.sent_model = None
 
