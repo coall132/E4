@@ -70,11 +70,19 @@ jobs:
     env:
       BASE_URL: http://127.0.0.1:8000
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/app
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_NAME: app
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+
+      POSTGRES_DB: app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
       REDIS_URL: redis://localhost:6379/0
       TURNSTILE_DEV_BYPASS: "1"
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
       API_STATIC_KEY: ${{ secrets.API_STATIC_KEY }}
-      # Assure un warmup réel pour /predict (chargement DF_CATALOG depuis la DB seedée)
       DISABLE_WARMUP: "0"
 
     steps:
@@ -95,27 +103,32 @@ jobs:
       - name: Install API deps
         working-directory: API
         run: pip install -r requirements_dev.txt
-
+      
       - name: Seed database (schemas + 1 restaurant)
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
         run: |
           python - <<'PY'
           import os
-          os.environ['DATABASE_URL'] = os.getenv('DATABASE_URL', '')
-          from sqlalchemy.sql import text
-          from API.database import engine, SessionLocal
+          from sqlalchemy import create_engine, text
+          from sqlalchemy.orm import sessionmaker
           from API import models
 
-          # Créer schémas + tables (sans Alembic)
+          url = os.environ["DATABASE_URL"]
+          engine = create_engine(url, future=True)
+          SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+          # Schémas
           with engine.begin() as conn:
               conn.execute(text('CREATE SCHEMA IF NOT EXISTS "ml"'))
               conn.execute(text('CREATE SCHEMA IF NOT EXISTS "user_base"'))
+
+          # Tables
           models.Base.metadata.create_all(bind=engine, checkfirst=True)
 
+          # Seed minimal
           db = SessionLocal()
           try:
-              # Insérer un resto si la table est vide
               if not db.query(models.Etablissement).first():
                   e = models.Etablissement(
                       id_etab=1, nom='Test Trattoria', adresse='1 rue A, Tours',
@@ -131,6 +144,7 @@ jobs:
                   db.commit()
           finally:
               db.close()
+          print("Seed OK")
           PY
 
       - name: Start API (background)
