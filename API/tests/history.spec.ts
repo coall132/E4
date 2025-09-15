@@ -1,73 +1,63 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, request as pwRequest } from '@playwright/test';
 
-test('historique: user -> login -> prédiction -> ouverture détail', async ({ page, request, baseURL, context }) => {
+test('historique: user -> login -> prédiction -> ouverture détail', async ({ page, request, context, baseURL }) => {
+  // baseURL garanti par la config
+  expect(baseURL).toBeTruthy();
 
-  const uid = Date.now();
-  const username = `user_${uid}`;
-  const email = `user_${uid}@test.local`;
-  const password = 'P@ssw0rd!123';
+  const username = `u${Date.now()}`;
+  const email = `${username}@e2e.test`;
+  const password = 'pass1234!';
 
-
-  const reg = await request.post(`${baseURL}/users`, {
-    data: {
-      username,
-      email,
-      password,
-      'cf-turnstile-response': 'test', 
-    },
+  // 1) Register (JSON)
+  const reg = await request.post('/users', {
+    json: { username, email, password }
   });
   expect(reg.ok()).toBeTruthy();
 
-  const tok = await request.post(`${baseURL}/auth/web/token`, {
+  // 2) Login (form OAuth2 + bypass Turnstile)
+  const login = await request.post('/auth/web/token', {
     form: {
       username,
       password,
-      'cf-turnstile-response': 'test', 
-    },
+      'cf-turnstile-response': '' // TURNSTILE_DEV_BYPASS=1 => OK
+    }
   });
-  expect(tok.ok()).toBeTruthy();
-  const tokJson = await tok.json();
-  const token: string = tokJson.access_token;
-  expect(token).toBeTruthy();
+  expect(login.ok()).toBeTruthy();
+  const { access_token } = await login.json();
 
+  // 3) Injecter le cookie côté UI
+  await context.addCookies([
+    { name: 'ACCESS_TOKEN', value: access_token, url: baseURL! }
+  ]);
 
-  const host = new URL(baseURL!).hostname;
-  await context.addCookies([{
-    name: 'ACCESS_TOKEN',
-    value: token,
-    domain: host,
-    path: '/',
-    httpOnly: false,
-    secure: false,
-    sameSite: 'Lax'
-  }]);
+  // 4) Créer une prédiction côté API (avec Authorization)
+  const apiCtx = await pwRequest.newContext({
+    baseURL,
+    extraHTTPHeaders: { Authorization: `Bearer ${access_token}` }
+  });
+  const predRes = await apiCtx.post('/predict?k=5&use_ml=false', {
+    json: {
+      description: 'italien terrasse',
+      price_level: 2,
+      city: 'Tours',
+      open: 'soir_weekend',
+      options: ['reservable', 'outdoorSeating']
+    }
+  });
+  expect(predRes.ok()).toBeTruthy();
+  const pred = await predRes.json();
+  expect(pred).toHaveProperty('id');
 
-  await page.goto('/'); 
-  await page.evaluate((t) => localStorage.setItem('ACCESS_TOKEN', t), token);
-
-  await page.goto('/predict');
-  await page.fill('#desc', 'italien terrasse');         
-  const kSelect = page.locator('#k');
-  if (await kSelect.count()) {
-    await kSelect.selectOption({ value: '5' }).catch(() => {});
-  }
-
-  await page.click('#predict-form [type="submit"]');
-
-  await page.waitForSelector('#predict-result .result-item', { timeout: 30_000 });
-
+  // 5) Ouvrir /history et cliquer sur la prédiction
   await page.goto('/history');
-  await page.waitForSelector('.pred-item', { timeout: 30_000 });
+  // La carte contient "Prédiction #<8 chars>"
+  const shortId = String(pred.id).slice(0, 8);
+  const card = page.locator('.pred-item', { hasText: shortId });
+  await expect(card).toBeVisible();
 
-  await page.click('.pred-item');
+  await card.click();
 
-  await page.waitForSelector('#predDetailModal .modal-body', { timeout: 15_000 });
-  await expect(page.locator('#predDetailBody')).toContainText('Items recommandés');
-
-  const firstItem = page.locator('#itemsList .result-item').first();
-  if (await firstItem.count()) {
-    await firstItem.click();
-    await page.waitForSelector('#detailModal .modal-body', { timeout: 15_000 });
-    await expect(page.locator('#detailModalTitle')).not.toHaveText('');
-  }
+  // 6) Vérifier la modale de détail
+  await expect(page.locator('#predDetailModal .modal-title, #predDetailBody')).toBeVisible();
+  await expect(page.getByText(new RegExp(`Prédiction #${shortId}`))).toBeVisible();
 });

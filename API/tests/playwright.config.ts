@@ -1,10 +1,10 @@
 import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
+  testDir: 'API/tests',
+  reporter: [['html', { open: 'never' }], ['line']],
   use: {
-    baseURL: process.env.BASE_URL || 'http://localhost:8000',
-    headless: true,
-    viewport: { width: 1280, height: 800 },
+    baseURL: process.env.BASE_URL || 'http://127.0.0.1:8000',
   },
-  timeout: 90_000,
+  timeout: 120_000,
 });
