@@ -110,25 +110,20 @@ jobs:
         run: |
           python - <<'PY'
           import os
-          from sqlalchemy import create_engine, text
-          from sqlalchemy.orm import sessionmaker
-          from API import models
+          os.environ['DATABASE_URL'] = os.getenv('DATABASE_URL', '')
+          from sqlalchemy.sql import text
+          from API.database import engine, SessionLocal
+          from API import models, CRUD
 
-          url = os.environ["DATABASE_URL"]
-          engine = create_engine(url, future=True)
-          SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-
-          # Schémas
+          # Schémas + tables
           with engine.begin() as conn:
               conn.execute(text('CREATE SCHEMA IF NOT EXISTS "ml"'))
               conn.execute(text('CREATE SCHEMA IF NOT EXISTS "user_base"'))
-
-          # Tables
           models.Base.metadata.create_all(bind=engine, checkfirst=True)
 
-          # Seed minimal
           db = SessionLocal()
           try:
+              # 1) Restaurant
               if not db.query(models.Etablissement).first():
                   e = models.Etablissement(
                       id_etab=1, nom='Test Trattoria', adresse='1 rue A, Tours',
@@ -142,9 +137,51 @@ jobs:
                       models.OpeningPeriod(id_etab=e.id_etab, open_day=6, open_hour=11, open_minute=30, close_day=6, close_hour=23, close_minute=0),
                   ])
                   db.commit()
+
+              # 2) Utilisateur e2e
+              user = db.query(models.User).filter(models.User.username=='e2e').first()
+              if not user:
+                  user = models.User(
+                      email='e2e@e2e.test',
+                      username='e2e',
+                      hashed_password=CRUD.ph.hash('pass1234!')   # même algo que ton API
+                  )
+                  db.add(user)
+                  db.flush()  # récupère user.id
+
+              # 3) Form + Prediction (si aucune pour cet utilisateur)
+              has_pred = db.query(models.Prediction).filter(models.Prediction.user_id==user.id).first()
+              if not has_pred:
+                  form = models.FormDB(
+                      price_level=2,
+                      city='Tours',
+                      open='soir_weekend',
+                      options=['reservable','outdoorSeating'],
+                      description='italien terrasse'
+                  )
+                  db.add(form); db.flush()
+
+                  pred = models.Prediction(
+                      form_id=form.id,
+                      user_id=user.id,
+                      k=3,
+                      model_version='ci',
+                      latency_ms=100,
+                      status='ok',
+                  )
+                  db.add(pred); db.flush()
+
+                  db.add(models.PredictionItem(
+                      prediction_id=pred.id,
+                      rank=1,
+                      etab_id=1,
+                      score=0.987
+                  ))
+                  db.commit()
+
+              print('Seed OK')
           finally:
               db.close()
-          print("Seed OK")
           PY
 
       - name: Start API (background)
