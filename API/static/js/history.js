@@ -1,16 +1,21 @@
 (function () {
   // -------- Helpers auth & DOM
   function getCookie(name) {
-    return document.cookie.split("; ").reduce((acc, c) => {
-      const [k, v] = c.split("="); return k === name ? decodeURIComponent(v) : acc;
-    }, "");
-  }
+  return document.cookie.split("; ").reduce((acc, c) => {
+    const [k, v] = c.split("="); return k === name ? decodeURIComponent(v) : acc;
+  }, "");
+}
   function authFetch(url, options = {}) {
     const headers = new Headers(options.headers || {});
-    const token = localStorage.getItem("ACCESS_TOKEN") || getCookie("auth_token") || "";
+    // ⬇️ on regarde localStorage puis cookie ACCESS_TOKEN (puis auth_token en secours)
+    const token =
+      localStorage.getItem("ACCESS_TOKEN") ||
+      getCookie("ACCESS_TOKEN") ||
+      getCookie("auth_token") ||
+      "";
     if (token) headers.set("Authorization", "Bearer " + token);
     return fetch(url, { ...options, headers });
-  }
+}
   function $all(sel, root=document){ return Array.from(root.querySelectorAll(sel)); }
 
   // -------- Date formatter (robuste aux ISO avec timezone)
